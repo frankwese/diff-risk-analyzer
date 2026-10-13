@@ -3,7 +3,7 @@
 ## Positive syntax profiles
 
 Risikoerkennung bleibt Pfad-/Textanalyse auch außerhalb dieser Syntaxprofile.
-Parserfehler (Tree-sitter ERROR/MISSING oder Python SyntaxError) sperren positive
+Parserfehler (Tree-sitter ERROR/MISSING in jedem der vier Profile) sperren positive
 Testzuordnung der betroffenen Datei. Kein toleranter Text-Fallback für USED.
 
 | Sprache | Deklarationen | Testfälle | Herkunft/Bindung |

@@ -1,7 +1,8 @@
 # Data Model: Git Diff Risk Analyzer
 
-Alle Modelle sind interne immutable dataclasses/enums, keine persistente Datenbank
-und keine zugesicherte öffentliche Python-API.
+Alle Modelle sind interne Rust-structs/enums mit unveränderlichen Referenzen während
+der Auswertung; keine persistente Datenbank und keine zugesicherte öffentliche Rust-API.
+Optionale Werte als `Option<T>`, Rohdaten als `Vec<u8>`, Ergebnisse als `Result<T, AnalysisError>`.
 
 ## RevisionComparison
 

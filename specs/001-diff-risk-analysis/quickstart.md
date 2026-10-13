@@ -5,16 +5,21 @@ Anwendungsbefehle sind heute noch nicht verfügbar und wurden nicht als E2E-Test
 
 ## Prerequisites and setup
 
-macOS/Linux, Python 3.12–3.14, Git >=2.49. Parser-Wheels für Zielplattform erforderlich.
-Installation kann Internet benötigen; Analyse läuft danach ausschließlich lokal.
+Nutzer: macOS/Linux, passendes natives Executable für x86_64/arm64 und Git >=2.49.
+Keine Python-, Java- oder Rust-Installation nötig; Parser und Regeln sind eingebunden.
+Download kann Internet benötigen; Analyse läuft danach ausschließlich lokal.
+
+Entwickler/Buildmaschinen: Rust >=1.90 mit Cargo, passende C-Toolchain und Linker für
+Tree-sitter; Linux-Releasebuilds benötigen musl-Toolchain für ihr jeweiliges Ziel.
+Lokale rustc-Installation aktuell ungeeignet (`bad CPU type in executable`); vor Build
+eine native funktionierende Toolchain bereitstellen.
 
 Aus Projektroot nach Implementierung:
 
 ```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install .
-.venv/bin/risk-analyzer --help
-.venv/bin/risk-analyzer --version
+cargo build --release --locked
+./target/release/risk-analyzer --help
+./target/release/risk-analyzer --version
 ```
 
 `--version` nennt Anwendungsversion und Regelstand; `--help` beschreibt BASE..TARGET.
@@ -23,8 +28,9 @@ Keine Installation von Code aus dem zu analysierenden Fremdrepository.
 ## Run checks
 
 ```sh
-.venv/bin/python -m unittest discover -s tests -v
-.venv/bin/python -m compileall -q src/risk_analyzer
+cargo fmt --all -- --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
 ```
 
 Regeltests: 14 positive/negative Paare plus Grenzfälle aus [rules.md](contracts/rules.md).
@@ -67,8 +73,13 @@ kein Lazy-Fetch. Jeden Referenzdiff zehnmal ausführen und stdout byteweise verg
 
 ## Packaging and limits
 
-Wheel mit `pip wheel --no-deps .` bauen und in frischer Umgebung installieren; Parser-
-Wheels vorab beschaffen, anschließend offline installieren/ausführen. Plattformen und
-Python-Versionen nur nach erfolgreichem Packaging-/Probecheck als geprüft dokumentieren.
+Release-Executable pro Ziel bauen: `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+`aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl`. Beispielsweise mit passender
+nativer/musl-Buildumgebung `cargo build --release --locked --target TARGET`.
+Cargo-Abhängigkeiten vor Build beziehen; Analyse benötigt sie nicht zur Laufzeit.
+Executable auf sauberes Zielsystem mit Git kopieren; alle Referenzfälle offline ohne
+Rust, Python, JVM oder externe Grammatikbibliotheken ausführen. Dynamische Verknüpfung
+prüfen: Linux statisch; macOS nur OS-Systembibliotheken. Jede der vier Grammatiken
+mit direktem Testnutzungsfall prüfen. Ziele erst nach erfolgreichem Test als geprüft nennen.
 Grenzfallfixtures für Limits aus cli.md müssen ohne Teil-Risk abbrechen. Repräsentativen
 100-Dateien-/10.000-Zeilen-Fall einmal hinsichtlich Zeit/RSS messen und Maschine nennen.

@@ -76,11 +76,13 @@ statische englische Rationale aus spec.md sinngemäß ausgeben, niemals Quelltex
   obwohl die fachliche Kategorie „Neue Business-Logik“ heißt; Ausgabe formuliert
   `Business behavior change detected` statt fälschlich „neue Logik“.
 - Öffentliche Vertragsvergleiche nur auf erkennbare Signaturen und strukturierte OpenAPI-
-  Elemente begrenzen; keine Vererbungs-/Typ-/Consumeranalyse. YAML via PyYAML SafeLoader
+  Elemente begrenzen; keine Vererbungs-/Typ-/Consumeranalyse. YAML via serde_yaml_ng
   mit eindeutigen Schlüsseln und begrenzter Alias-/Rekursionstiefe laden; keine eigenen
   Objekt-Tags, keine externen $ref. OpenAPI nur paths und components.schemas mit
   properties/required/primitive type vergleichen; komplexe allOf/oneOf sind unsupported.
-  JSON via Standardbibliothek, doppelte Schlüssel ebenfalls ablehnen.
+  JSON via serde_json, doppelte Schlüssel ebenfalls ablehnen. Beide Deserialisierer
+  müssen doppelte Schlüssel vor einer verlustbehafteten Map-Konvertierung erkennen;
+  keine Tag-Ausführung oder Alias-/Rekursionsumgehung der Ressourcenlimits.
 
 ## Region accounting
 

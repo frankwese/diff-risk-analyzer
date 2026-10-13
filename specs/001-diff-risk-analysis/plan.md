@@ -8,33 +8,40 @@
 
 Lokale CLI `risk-analyzer BASE..TARGET` mit 14 deterministischen Risikosignalen,
 höchster Signalstufe als Gesamtrisiko und getrennten symbolbezogenen Testhinweisen.
-Python steuert Git ausschließlich lesend an. Rohdaten und vollständige Revision-Blobs
+Rust steuert Git ausschließlich lesend an. Rohdaten und vollständige Revision-Blobs
 werden ohne externe Diff-/Textfilter gelesen. Ein fester Pfad-/Textkatalog bewertet
-Risiken; Python `ast` und drei Tree-sitter-Grammatiken liefern Syntax für begrenzte
+Risiken; vier eingebundene Tree-sitter-Grammatiken liefern Syntax für begrenzte
 Testnutzungszuordnung. Kein LLM, Netzwerk, Repository-Codeimport oder Testlauf der
 analysierten Anwendung. Unbekannte Risikoänderung bedeutet Fehler; unklare Testnutzung
 bleibt ein Hinweis. Ausführbare Regelspezifikation: [contracts/rules.md](contracts/rules.md).
 
 ## Technical Context
 
-**Language/Version**: Python >=3.12,<3.15; Entwicklungsbasis CPython 3.12.
+**Language/Version**: Rust stable >=1.90, Edition 2024; Cargo. Build-Toolchain beim
+Implementierungsstart über `rust-toolchain.toml` auf eine konkrete stabile Version pinnen.
 
-**Primary Dependencies**: Git >=2.49 mit `--no-lazy-fetch`; `tree-sitter==0.26.0`,
-`tree-sitter-java==0.23.5`, `tree-sitter-javascript==0.25.0`,
-`tree-sitter-typescript==0.23.2`, `PyYAML==6.0.3` für YAML-Verträge/Manifeste.
-Python-Syntax über `ast`/`tokenize`.
-Packaging mit setuptools als reiner Build-Abhängigkeit; console-script entry point.
+**Primary Dependencies**: Git >=2.49 mit `--no-lazy-fetch`; Rust-Crates
+`tree-sitter = =0.27.1`, `tree-sitter-java = =0.23.5`,
+`tree-sitter-javascript = =0.25.0`, `tree-sitter-typescript = =0.23.2`,
+`tree-sitter-python = =0.25.0`; `similar = =3.2.0` für Zeilendeltas,
+`serde_json = =1.0.154`, `serde_yaml_ng = =0.10.0` für strukturierte Daten.
+`tempfile = =3.27.0` nur als Testabhängigkeit. CLI über `std::env::args_os`,
+Git über `std::process::Command`; kein zusätzliches CLI-Framework.
+Cargo.lock wird versioniert; C-Compiler/Linker nur auf Build-Maschinen für Parser benötigt.
 
 **Storage**: Keine persistente Anwendungsablage; Revision-Blobs, Befunde und Syntaxbäume
 im Speicher. Git-Integrationstests verwenden temporäre Repositorys.
 
-**Testing**: Standardbibliothek `unittest`; Regel-/Bindungsfixtures, CLI-Vertragstests
-und echte Git-Repositorytests. Keine zusätzliche Testframework-Abhängigkeit.
+**Testing**: Rust `#[test]`/`cargo test --locked`; Regel-/Bindungsfixtures,
+CLI-Vertragstests und echte Git-Repositorytests. `cargo fmt` und Clippy als Qualitätsprüfungen.
 
-**Target Platform**: macOS und Linux, x86_64/arm64 mit Python und Git; erstes praktisch
-geprüftes Entwicklungsziel macOS arm64. Andere Ziele vor Release gesondert validieren.
+**Target Platform**: macOS und Linux, x86_64/arm64; Nutzer benötigen nur passendes
+Executable, OS-Systembibliotheken und Git. Je Zielarchitektur eigener Build: Darwin
+native, Linux musl statisch einschließlich Parser. Keine Rust-/Python-/Java-Installation
+auf Nutzersystemen. macOS arm64 ist die lokale Umgebung, noch kein geprüfter Rust-Build.
 
-**Project Type**: Installierbare CLI, ein Paket, keine öffentliche Bibliotheks-API.
+**Project Type**: Native Standalone-CLI, eine Cargo-Crate mit Binary `risk-analyzer`;
+keine öffentliche Bibliotheks-API. Parser und Regeldaten sind im Executable enthalten.
 
 **Performance Goals**: Entwicklungsziel <=5 Sekunden für 100 Dateien/10.000 geänderte
 Zeilen und <=256 MiB Spitzen-RSS auf dokumentierter Referenzmaschine; kein neues
@@ -54,8 +61,8 @@ Testzuordnung. Kein vollständiger Callgraph, Typchecker, Regelplugin oder Konfi
 
 | Prinzip | Vor Recherche | Nach Design |
 | --- | --- | --- |
-| Nachvollziehbare Anforderungen | PASS: spec.md und 16 geprüfte Checklistenpunkte | PASS: FR-001–015 auf CLI-, Regel- und Bindungsverträge abgebildet |
-| Kleinste vollständige Lösung | PASS: leeres src, keine bestehende Implementierung | PASS: ein Python-Paket; Parser ersetzen komplexe eigene Teilparser; keine Service-/Plugin-Schichten |
+| Nachvollziehbare Anforderungen | PASS: spec.md und 16 geprüfte Checklistenpunkte | PASS: FR-001–016 auf CLI-, Regel-, Bindungs- und Auslieferungsverträge abgebildet |
+| Kleinste vollständige Lösung | PASS: leeres src, keine bestehende Implementierung | PASS: eine Rust-Crate; Parser ersetzen komplexe eigene Teilparser; keine Service-/Plugin-Schichten |
 | Überprüfbare Korrektheit | PASS: Akzeptanzfälle vorhanden | PASS: 14 positive/negative Regelpaare, Bindungsmatrix und Git-Vertragstests geplant |
 | Explizite Eingaben und Fehler | PASS: Fehler statt falscher LOW-Bewertung | PASS: OID-Validierung, Größenlimits, Secrets ohne Quelltextausgabe, Status getrennt |
 | Nachvollziehbare Ergebnisse | PASS: feste Regeln, stabile Reihenfolge | PASS: Regelstand, Datei/Seite/Zeile, deterministische Diff-/Sortierpolitik |
@@ -87,22 +94,24 @@ specs/001-diff-risk-analysis/
 Geplante Struktur, noch nicht implementiert:
 
 ```text
-pyproject.toml
+Cargo.toml
+Cargo.lock
+rust-toolchain.toml
 README.md
-src/risk_analyzer/
-├── __init__.py
-├── __main__.py
-├── cli.py
-├── git.py
-├── model.py
-├── rules.py
-├── association.py
-└── syntax.py
+src/
+├── main.rs
+├── lib.rs
+├── cli.rs
+├── git.rs
+├── model.rs
+├── rules.rs
+├── association.rs
+└── syntax.rs
 tests/
-├── test_rules.py
-├── test_association.py
-├── test_git.py
-├── test_cli.py
+├── rules.rs
+├── association.rs
+├── git.rs
+├── cli.rs
 └── fixtures/
     ├── rules/
     └── association/
@@ -116,7 +125,8 @@ IDE-Java-Metadaten sind keine Produktvorgabe. README beschreibt Installation und
 
 1. CLI validiert genau einen Zwei-Revisionsvergleich und löst beide Endpunkte in OIDs auf.
 2. Git liefert NUL-getrennte Raw-Änderungen und rohe Blobs. Inhaltsvergleich über
-   `difflib.SequenceMatcher(autojunk=False)` auf vollständigen Zeilen; Limits vor Vergleich.
+   `similar` mit explizitem `Algorithm::Myers` auf vollständigen Zeilen; Limits vor Vergleich.
+   Zeitlimit darf nur abbrechen, nicht einen zeitabhängigen unvollständigen Diff liefern.
 3. Risikoanalyse klassifiziert Pfade und geänderte Inhalte anhand Regelkatalog 1.0.0.
    Jeder substanzielle Änderungsbereich muss ein unterstütztes Bewertungsmuster besitzen;
    ein HIGH-Treffer macht andere unbekannte Bereiche nicht automatisch bewertbar.
@@ -135,12 +145,13 @@ IDE-Java-Metadaten sind keine Produktvorgabe. README beschreibt Installation und
   neben HIGH, zehn Wiederholungen mit byteidentischer Ausgabe.
 - FR-008/009/014/015: Testfall-/Receiver-Matrix aus test-association.md in allen vier Profilen.
 - FR-004/013: exakte stdout/stderr-/Exit-Verträge, escaped Pfade und Secret-Redaktion.
-- Packaging: Installation aus Wheel mit vorgebauten Parser-Wheels; CLI läuft außerhalb
-  Quellbaum sowie im Unterverzeichnis eines analysierten Repositorys. Laufzeittest offline.
+- FR-016/Packaging: `cargo build --release --locked`, je Ziel Binary separat testen;
+  CLI außerhalb Quellbaum und in Repository-Unterverzeichnis. Laufzeittest offline auf
+  sauberem Zielsystem ohne Python, JVM oder Rust; eingebettete vier Grammatiken prüfen.
 
 ## Complexity Tracking
 
-Keine Constitution-Verletzungen. Die vier Syntaxparserpakete sind durch präzise
+Keine Constitution-Verletzungen. Tree-sitter mit vier Grammatiken ist durch präzise
 Testfallgrenzen, Kommentar-/String-Abgrenzung und Klassen-/Methodennutzung begründet.
-PyYAML ersetzt einen eigenen fehleranfälligen YAML-Teilparser. Ein eigener Parser
+serde_yaml_ng ersetzt einen eigenen fehleranfälligen YAML-Teilparser. Ein eigener Parser
 für vier Sprachen wäre mehr Code und schlechter überprüfbar.

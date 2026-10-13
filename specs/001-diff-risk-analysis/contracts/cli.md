@@ -2,6 +2,11 @@
 
 ## Invocation
 
+Auslieferung als native Datei `risk-analyzer` je macOS/Linux und x86_64/arm64.
+Keine installierte Rust-, Python- oder Java-Laufzeit; Parser/Regeln im Executable.
+Linux-Binaries für musl statisch bauen; macOS nutzt ausschließlich mitgelieferte
+OS-Systembibliotheken. Git >=2.49 bleibt erforderlich. Keine Laufzeitinstallation.
+
 ```text
 risk-analyzer BASE..TARGET
 risk-analyzer --help
@@ -76,4 +81,4 @@ LFS-Pointeränderungen sind nicht die referenzierte Binärdatei und bleiben unsu
 Nur rev-parse, diff-tree, cat-file; kein Checkout, Fetch, Hook, Textconv, External Diff,
 Build, Testlauf oder Import aus dem analysierten Repository. Vollständige Revisioninhalte
 dürfen für Kontext/Testfälle gelesen werden; keine persistenten Reports oder Caches.
-Installations-/Entwicklungsbefehle können Abhängigkeiten laden; die installierte CLI nicht.
+Build-/Downloadbefehle können Abhängigkeiten laden; das ausgelieferte Executable nicht.

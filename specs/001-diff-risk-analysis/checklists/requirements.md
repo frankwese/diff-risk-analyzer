@@ -46,3 +46,5 @@
   ausdrücklich dokumentierte MVP-Annahmen und können bei der Klärung angepasst werden.
 - Die Checkliste bewertet die Spezifikation; sie bestätigt keine Implementierung und
   keine ausgeführten Anwendungstests.
+- Nach Rust-/Standalone-Entscheidung erneut geprüft: FR-016, User Story 3 Szenario 5
+  und SC-008 definieren die laufzeitfreie Auslieferung. Weiterhin 16 von 16 Kriterien erfüllt.

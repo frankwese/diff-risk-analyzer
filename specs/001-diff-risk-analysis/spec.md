@@ -98,6 +98,10 @@ mit nicht unterstützten Änderungen liefern jeweils einen erkennbaren Fehlerzus
    der Aufruf endet ohne abschließende Gesamtrisikoklasse mit einem Fehlerstatus.
 4. **Given** ein Aufruf ohne Netzwerkzugang, **When** lokale Revisionen verfügbar sind,
    **Then** funktioniert die Analyse und verändert weder Repository noch Arbeitsdateien.
+5. **Given** ein unterstütztes Nutzersystem mit Git und dem passenden ausgelieferten
+   Executable, aber ohne installierte Sprachlaufzeit oder Entwicklungswerkzeuge,
+   **When** ein unterstützter Vergleich analysiert wird, **Then** funktioniert die Analyse
+   einschließlich aller vier Testzuordnungsprofile ohne Nachladen weiterer Komponenten.
 
 ### Edge Cases
 
@@ -208,6 +212,11 @@ mit nicht unterstützten Änderungen liefern jeweils einen erkennbaren Fehlerzus
   DARF eine sonst bewertbare Risikoanalyse nicht zum Fehler machen. Die Analyse DARF
   aus einer erkannten Nutzung weder ausgeführte Tests noch wirksame Assertions oder
   vollständige Testabdeckung ableiten.
+- **FR-016**: Das Werkzeug MUSS als natives Standalone-Executable für macOS und Linux,
+  jeweils x86_64 und arm64, ausgeliefert werden. Auf dem Nutzersystem DARF keine separate
+  Sprachlaufzeit, kein Compiler oder Paketmanager nötig sein. Parser und feste Regeln
+  MÜSSEN mitgeliefert sein; Git bleibt eine externe Voraussetzung. Die Auslieferung
+  MUSS ohne erstmaliges Herunterladen von Analysekomponenten funktionieren.
 
 ### Heuristische Erkennungsbedingungen
 
@@ -266,6 +275,9 @@ Semantikneutralität ist nur bei einem konkret unterstützten Neutralitätsmuste
 - **SC-007**: Referenzfälle für direkte Nutzung, passenden Namen ohne Nutzung, falsche
   gleichnamige Methode, unveränderten Testfall, teilweise Zuordnung und indirekte Nutzung
   liefern jeweils den vereinbarten symbolbezogenen Status und nachvollziehbare Fundstellen.
+- **SC-008**: Auf jedem der vier unterstützten Plattform-/Architekturziele liefert das
+  Release-Executable die Referenzfälle ohne separate Sprachlaufzeit und offline korrekt,
+  einschließlich je eines direkten Testnutzungsbefunds für Java, JS, TS und Python.
 
 ## Assumptions
 
@@ -286,3 +298,5 @@ Semantikneutralität ist nur bei einem konkret unterstützten Neutralitätsmuste
   nicht erkannte Strukturen werden nicht als erfolgreiche Testzuordnung behandelt.
 - Nutzerklärung vom 2026-10-13: Erkennung nach Option 1A; Testnamen-/Pfadzuordnung nach
   Option 2B mit zusätzlichem zwingendem Nutzungsbefund für geänderte Klassen und Methoden.
+- Nutzerentscheidung vom 2026-10-13: natives Standalone-Tool; technische Umsetzung in
+  Rust wird im Plan festgelegt. Python bleibt unterstützte analysierte Quellsprache.

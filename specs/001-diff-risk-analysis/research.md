@@ -2,33 +2,40 @@
 
 ## 1. CLI-Laufzeit und Distribution
 
-**Decision**: Python >=3.12,<3.15, ein installierbares src-layout-Paket; `argparse`,
-`subprocess`, `difflib`, `dataclasses`, `unittest`. setuptools nur für den Paketbau.
+**Decision**: Rust stable >=1.90, Edition 2024, eine Cargo-Crate mit nativem Binary
+`risk-analyzer`. std::env::args_os, std::process::Command, structs/enums und Rust-Testharness.
+Cargo.lock versionieren und Toolchain beim Implementierungsstart pinnen.
 
 **Rationale**: Kein Anwendungscode vorhanden; das Java-IDE-Grundgerüst begründet keinen
-Stackzwang. Byte-Prozessausgabe, CLI und Tests sind in Python bereits verfügbar.
+Stackzwang. Der Nutzer hat Rust ausdrücklich gewählt. Ein natives Binary erfüllt die
+Standalone-Anforderung ohne separate Python-/JVM-/Rust-Installation bei Nutzern.
 
-**Alternatives considered**: Java 25 mit ProcessBuilder ist möglich, benötigt hier mehr
-CLI-/Textverarbeitungscode. JGit würde eine zusätzliche Git-Implementierung einführen.
+**Alternatives considered**: Python+PyInstaller könnte eine Laufzeit bündeln, wurde durch
+die Nutzerentscheidung ersetzt. Go mit C-Parseranbindung und Java mit gebündelter JVM
+oder Native Image wurden besprochen; Rust bietet direkte Tree-sitter-Crate-Integration.
+Git bleibt extern; Parser-C-Code wird beim Build eingebunden. Separate Darwin-Builds
+und statische Linux-musl-Builds für jeweils x86_64/arm64, keine zusätzliche Parserdatei.
 
 ## 2. Syntax ohne Semantikversprechen
 
-**Decision**: Python `ast`/`tokenize`; Java/JS/TS über Tree-sitter. Pins:
-`tree-sitter 0.26.0`, Java 0.23.5, JavaScript 0.25.0, TypeScript 0.23.2.
+**Decision**: Tree-sitter Rust-Crate und Grammatiken für alle vier Quellsprachen. Pins:
+`tree-sitter 0.27.1`, Java 0.23.5, JavaScript 0.25.0, TypeScript 0.23.2, Python 0.25.0.
 Nur endliche lokale Bindungsregeln aus [test-association.md](contracts/test-association.md).
 
 **Rationale**: Die Nutzervorgabe verlangt tatsächliche Verwendung im geänderten Testfall,
 nicht allein Namen. Syntaxbäume liefern Bereiche und Aufrufe, aber keine Typ-/Callgraphanalyse.
 Kommentare, Literale, Receiver und geänderte Testgrenzen sind mit Regex allein unzuverlässig.
 
-**Alternatives considered**: Eigener stdlib-Teilparser würde vier Lexer/Scope-Modelle
+**Alternatives considered**: Eigener Teilparser würde vier Lexer/Scope-Modelle
 erfordern. Vollständige Compiler/Language-Server wären unnötig groß und projektabhängig.
 Kein zweiter Regex-Fallback, der trotz Parserfehlern positive Testnutzung behauptet.
 
-**Evidence**: PyPI-Metadaten am 2026-10-13 prüfen die Pins und macOS-arm64-/Linux-arm64-Wheels.
-Ein isolierter `uv run --no-project --python 3.12`-Probeaufruf mit allen vier Pins konnte
-Java-, JS- und TS-Klassen ohne Parsefehler parsen. Keine Projektabhängigkeiten installiert.
-Wheel-/Release-Test anderer Plattformen und Python-Versionen bleibt Implementierungsprüfung.
+**Evidence**: crates.io-Metadaten am 2026-10-13 bestätigen die Pins; tree-sitter 0.27.1
+benötigt Rust >=1.90. Rust-Binding dokumentiert Einbindung über LANGUAGE-Konstanten.
+Frühere Python-Parserproben gelten nicht als Nachweis des Rust-Builds. Die lokale
+rustc-Installation meldet `bad CPU type in executable`; native Toolchain-Reparatur und
+Parser-ABI-/Release-Proben sind vor Implementierung erforderlich. Keine Installation
+oder Änderung der Toolchain im Rahmen dieser Planaktualisierung.
 
 ## 3. Read-only Git-Zugriff
 
@@ -61,9 +68,10 @@ Textpatch-/numstat-Parsing ist attributabhängig. Checkout/Fetch würde Laufzeit
 
 ## 4. Deterministischer Vergleich und vollständige Bewertung
 
-**Decision**: Zeilenvergleich per SequenceMatcher mit deaktivierter autojunk-Optimierung;
+**Decision**: Zeilenvergleich via `similar 3.2.0`, festes `Algorithm::Myers`;
 feste Limits aus cli.md. Kein Score, max(LOW, MEDIUM, HIGH). Regelstand 1.0.0 in Ausgabe.
 Unbekannte substanzielle Änderungsbereiche führen zu Fehler, auch neben einem HIGH-Befund.
+Kein zeitabhängiger Diff-Fallback; Timeout bedeutet Analysefehler statt Teilergebnis.
 
 **Rationale**: Ein Signal erkennt ein Indiz, nicht sämtliche Änderungen in derselben Datei.
 Vollständigkeit bedeutet Bewertung im festen Regelumfang, keine garantierte Risikoerkennung.
@@ -87,8 +95,8 @@ Callgraph über alle Repositorydateien ist für MVP nicht erforderlich.
 
 ## 6. Strukturierte Vertragsformate
 
-**Decision**: JSON über die Standardbibliothek; YAML über `PyYAML==6.0.3` mit
-SafeLoader und Ablehnung doppelter Schlüssel. Benutzerdefinierte Tags nicht ausführen;
+**Decision**: JSON über `serde_json 1.0.154`; YAML über `serde_yaml_ng 0.10.0` mit
+Ablehnung doppelter Schlüssel vor Map-Konvertierung. Benutzerdefinierte Tags nicht ausführen;
 Alias-/Rekursionstiefe und geladene Elementzahl begrenzen. OpenAPI ausschließlich
 paths/components.schemas/properties/required und primitive type-Verträge vergleichen;
 externe $ref nicht auflösen, komplexe allOf/oneOf als nicht bewertbar markieren.
@@ -98,9 +106,9 @@ Ein selbstgebauter YAML-Parser spart hier keine Wartung und erzeugt falsche Feld
 
 **Alternatives considered**: Nur JSON würde die vorgesehenen YAML-Vertragsbeispiele nicht
 abdecken. Allgemeine Schema-/Consumeranalyse ist für den heuristischen MVP zu umfangreich.
-PyPI am 2026-10-13: Version 6.0.3, Python >=3.8. Isolierte Probe mit CPython 3.12:
-Safe-load eines einfachen required/properties-Mappings erfolgreich. Laufzeit nutzt keine
-Netzwerkreferenzen; Alias-/Schlüsselprüfungen sind noch zu implementieren und zu testen.
+crates.io am 2026-10-13 bestätigt beide Pins; serde_yaml_ng MSRV 1.64. Rust-Syntax-/
+Alias-/Schlüsselprüfungen sind noch zu implementieren und zu testen. Kein eigenes YAML-
+Parsing; der archivierte serde_yaml-Vorgänger wird nicht als neue Abhängigkeit gewählt.
 
 ## Sources
 
@@ -108,13 +116,14 @@ Netzwerkreferenzen; Alias-/Schlüsselprüfungen sind noch zu implementieren und 
 - [Git diff-tree](https://git-scm.com/docs/git-diff-tree)
 - [Git cat-file](https://git-scm.com/docs/git-cat-file)
 - [Git rev-parse](https://git-scm.com/docs/git-rev-parse)
-- [Python subprocess](https://docs.python.org/3/library/subprocess.html)
-- [Python ast](https://docs.python.org/3/library/ast.html)
-- [Tree-sitter Python bindings](https://github.com/tree-sitter/py-tree-sitter)
+- [Rust Command](https://doc.rust-lang.org/std/process/struct.Command.html)
+- [Tree-sitter Rust bindings](https://github.com/tree-sitter/tree-sitter/tree/master/lib/binding_rust)
+- [similar algorithms](https://docs.rs/similar/3.2.0/similar/enum.Algorithm.html)
 - [Tree-sitter Syntax/Fehler](https://tree-sitter.github.io/tree-sitter/using-parsers/queries/1-syntax.html)
 - [JUnit Test](https://docs.junit.org/current/api/org.junit.jupiter.api/org/junit/jupiter/api/Test.html)
 - [Jest API](https://jestjs.io/docs/api)
 - [pytest conventions](https://docs.pytest.org/en/stable/explanation/goodpractices.html)
-- [PyYAML documentation](https://pyyaml.org/wiki/PyYAMLDocumentation)
+- [serde_yaml_ng](https://docs.rs/serde_yaml_ng/0.10.0/serde_yaml_ng/)
 
-Alle technischen Unbekannten für Phase 1 entschieden. Parserprobe ist kein Anwendungstest.
+Technische Entscheidungen getroffen. Rust-Build-/Parserkompatibilität und vier Releaseziele
+sind Implementierungsprüfungen; aktuell durch ungeeignete lokale rustc-Binärdatei blockiert.

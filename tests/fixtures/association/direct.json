@@ -1,0 +1,6 @@
+[
+ {"path":"src/guard.js","old":"export class Guard { authorize() { return true; } }","new":"export class Guard { authorize() { return false; } }","test_path":"src/guard.test.js","test":"import {Guard} from './guard.js'; test('allows', () => { const g = new Guard(); expect(g.authorize()); });"},
+ {"path":"src/guard.ts","old":"export class Guard { authorize(): boolean { return true; } }","new":"export class Guard { authorize(): boolean { return false; } }","test_path":"src/guard.test.ts","test":"import {Guard} from './guard.ts'; test('allows', () => { const g = new Guard(); expect(g.authorize()); });"},
+ {"path":"src/guard.py","old":"class Guard:\n    def authorize(self):\n        return True\n","new":"class Guard:\n    def authorize(self):\n        return False\n","test_path":"tests/test_guard.py","test":"from guard import Guard\ndef test_allows():\n    g = Guard()\n    assert g.authorize()\n"},
+ {"path":"src/main/java/demo/Guard.java","old":"package demo; public class Guard { public boolean authorize() { return true; } }","new":"package demo; public class Guard { public boolean authorize() { return false; } }","test_path":"src/test/java/demo/GuardTest.java","test":"package demo; import org.junit.jupiter.api.Test; import demo.Guard; class GuardTest { @Test void allows() { Guard g = new Guard(); assertTrue(g.authorize()); } }"}
+]

@@ -1,0 +1,12 @@
+[
+ {"name":"factory","body":"const g = makeGuard(); g.authorize();","status":"UNKNOWN"},
+ {"name":"alias","body":"const g = new Guard(); const h = g; h.authorize();","status":"UNKNOWN"},
+ {"name":"reassignment","body":"let g = new Guard(); g = makeGuard(); g.authorize();","status":"UNKNOWN"},
+ {"name":"reassignment-after-use","body":"let g = new Guard(); g.authorize(); g = makeGuard();","status":"UNKNOWN"},
+ {"name":"other-class","body":"const g = new Other(); g.authorize();","status":"MISSING"},
+ {"name":"constructor-only","body":"const g = new Guard();","status":"MISSING"},
+ {"name":"literal-only","body":"const text = 'Guard.authorize()';","status":"MISSING"},
+ {"name":"method-reference","body":"const g = new Guard(); const f = g.authorize;","status":"MISSING"},
+ {"name":"nested-lambda","body":"const g = new Guard(); expect(() => g.authorize());","status":"UNKNOWN"},
+ {"name":"branch","body":"if (ok) { const g = new Guard(); g.authorize(); }","status":"UNKNOWN"}
+]

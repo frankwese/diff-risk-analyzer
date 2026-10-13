@@ -17,8 +17,8 @@ bleibt ein Hinweis. Ausführbare Regelspezifikation: [contracts/rules.md](contra
 
 ## Technical Context
 
-**Language/Version**: Rust stable >=1.90, Edition 2024; Cargo. Build-Toolchain beim
-Implementierungsstart über `rust-toolchain.toml` auf eine konkrete stabile Version pinnen.
+**Language/Version**: Rust 1.99.0, Edition 2024; Cargo. Beim Implementierungsstart
+über `rust-toolchain.toml` pinnen; Abhängigkeiten benötigen mindestens Rust 1.90.
 
 **Primary Dependencies**: Git >=2.49 mit `--no-lazy-fetch`; Rust-Crates
 `tree-sitter = =0.27.1`, `tree-sitter-java = =0.23.5`,
@@ -87,7 +87,7 @@ specs/001-diff-risk-analysis/
     └── test-association.md
 ```
 
-`tasks.md` wird erst durch `/speckit.tasks` erzeugt.
+`tasks.md` enthält die durch `/speckit.tasks` erzeugte Ausführungsreihenfolge.
 
 ### Source Code (repository root)
 

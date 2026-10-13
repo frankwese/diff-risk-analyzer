@@ -1,7 +1,7 @@
 # Quickstart and Validation Guide
 
-Dieser Guide beschreibt die geplante Anwendung nach Implementierung. Die folgenden
-Anwendungsbefehle sind heute noch nicht verfügbar und wurden nicht als E2E-Test ausgeführt.
+Dieser Guide beschreibt die implementierte lokale CLI. Ausgeführte Prüfungen und noch
+offene Vertrags-/Releaseprüfungen stehen in [validation.md](validation.md).
 
 ## Prerequisites and setup
 
@@ -11,8 +11,8 @@ Download kann Internet benötigen; Analyse läuft danach ausschließlich lokal.
 
 Entwickler/Buildmaschinen: Rust >=1.90 mit Cargo, passende C-Toolchain und Linker für
 Tree-sitter; Linux-Releasebuilds benötigen musl-Toolchain für ihr jeweiliges Ziel.
-Lokale rustc-Installation aktuell ungeeignet (`bad CPU type in executable`); vor Build
-eine native funktionierende Toolchain bereitstellen.
+Lokale native Rust-/Cargo-Toolchain 1.99.0 für `aarch64-apple-darwin` geprüft.
+Projekt-Toolchain ist auf 1.99.0 gepinnt; alle vier Parser bauen und bestehen direkte Proben.
 
 Aus Projektroot nach Implementierung:
 

@@ -32,10 +32,10 @@ Kein zweiter Regex-Fallback, der trotz Parserfehlern positive Testnutzung behaup
 
 **Evidence**: crates.io-Metadaten am 2026-10-13 bestätigen die Pins; tree-sitter 0.27.1
 benötigt Rust >=1.90. Rust-Binding dokumentiert Einbindung über LANGUAGE-Konstanten.
-Frühere Python-Parserproben gelten nicht als Nachweis des Rust-Builds. Die lokale
-rustc-Installation meldet `bad CPU type in executable`; native Toolchain-Reparatur und
-Parser-ABI-/Release-Proben sind vor Implementierung erforderlich. Keine Installation
-oder Änderung der Toolchain im Rahmen dieser Planaktualisierung.
+Frühere Python-Parserproben gelten nicht als Nachweis des Rust-Builds. Nach Installation
+durch den Nutzer bestätigt die erneute Prüfung am 2026-10-13 Rust/Cargo 1.99.0 mit Host
+`aarch64-apple-darwin`. Der Architekturblocker ist behoben. Parser-ABI-/Release-Proben
+stehen noch aus; Rust 1.99.0 wird als konkrete Build-Toolchain vorgesehen.
 
 ## 3. Read-only Git-Zugriff
 
@@ -125,5 +125,5 @@ Parsing; der archivierte serde_yaml-Vorgänger wird nicht als neue Abhängigkeit
 - [pytest conventions](https://docs.pytest.org/en/stable/explanation/goodpractices.html)
 - [serde_yaml_ng](https://docs.rs/serde_yaml_ng/0.10.0/serde_yaml_ng/)
 
-Technische Entscheidungen getroffen. Rust-Build-/Parserkompatibilität und vier Releaseziele
-sind Implementierungsprüfungen; aktuell durch ungeeignete lokale rustc-Binärdatei blockiert.
+Technische Entscheidungen getroffen, native Toolchain geprüft. Rust-Build-/Parser-
+kompatibilität und vier Releaseziele bleiben Implementierungsprüfungen.

@@ -113,3 +113,15 @@ Erledigtmarker bleiben unverändert. Folgende Restabweichungen sind noch zu behe
 T033 vor T034 im gemeinsamen Regionsvergleich bearbeiten. T035 betrifft die
 CLI-Prozessgrenze; T036 die Manifestabgrenzung. Nach den Korrekturen gezielte
 Regressions-/Kompatibilitätsprüfungen dokumentieren und erneut für 002 konvergieren.
+
+## Phase 8: Convergence
+
+Erneuter Abgleich nach T033–T036: drei konkrete Restvarianten bestehender Anforderungen.
+Keine Änderung vorhandener Aufgaben oder Erledigtmarker durch diese Prüfung.
+
+- [X] T037 [US1] CRITICAL: Ergänze die AST-bezogene Then-/Else-/Zweigidentität in der SourceRegion-Herkunft in `src/rules.rs`. Die gleiche if-Bedingung darf Konsequenz und Alternative nicht zu demselben Vergleichsraum machen; Anweisungen zwischen diesen Zweigen dürfen nicht gegenseitig als unverändert ausgeglichen werden. Ergänze in `tests/rules.rs` Java-/JS-/TS-Fälle mit gleicher Bedingung und zwischen Then/Else getauschten Auth-/Zahlungsoperationen sowie unverändertem Kontrollfall; fordere Auth-Kontext statt LOW oder verschwundenem Befund, per Constitution IV/V, FR-008/FR-011 und T033 (contradicts; F11).
+- [X] T038 [US1] Trenne direkte Auth-Prüfaufrufe und geänderte Auth-Deklarationen von bloßen Identifiern in `src/rules.rs` und bei Bedarf `src/syntax.rs`. Eine Variable, Methodenreferenz oder sonstige Namensnennung authorize/authenticate/checkPermission/hasRole/verifyToken darf allein keine direkt geänderte Auth-Operation behaupten. Ergänze in `tests/rules.rs` positive tatsächliche Aufrufe und negative Variablen-/Referenzfälle; funktionsbezogenen AUTH_CONTEXT_CHANGE und Auth-Pfadregeln erhalten, per FR-006/FR-011 und T029 (partial; F12).
+- [X] T039 [US1] Berücksichtige implizit öffentliche Java-Interface-Methoden ohne geschriebenen public-Modifier in der Vertrags-Symbolerkennung in `src/syntax.rs` und `src/rules.rs`. Ergänze in `tests/rules.rs` hinzugefügte, entfernte und geänderte Interface-Signaturen wie int get(); und private Interface-Methoden als Gegenbeispiele; API_EXTENSION/CONTRACT_BREAK im vereinbarten API-Vertragsbereich korrekt ausgeben, per FR-005/FR-008 und T030 (partial; F13).
+
+T037 zuerst; T038 und T039 danach mit getrennten Regressionen. Anschließend den
+betroffenen Regel-/CLI-Vertrag prüfen und erneut für Feature 002 konvergieren.

@@ -3,6 +3,20 @@
 **Stand**: Dokumentenmigration am 2026-10-13, Basiscommit eb5de1e.
 **Status**: Bestätigte Auth-Kontextkorrektur T026 umgesetzt und gezielt validiert.
 
+## T037–T039 umgesetzt
+
+Then-/Else-Zugehörigkeit wird aus AST consequence/alternative-Bereichen als eigene
+Regionsrolle erfasst; getauschte Auth-/Payment-Operationen in Java/JS/TS werden nicht
+gegenseitig ausgeglichen. Das Java-else-Trennwort ist als Struktur statt unbekannter
+Operation behandelt. Direkte Auth-Prüfung wird anhand tatsächlicher Call-Knoten oder
+geänderter Auth-Deklarationen erfasst, nicht allein anhand einer Variable/Methodenreferenz.
+Auth-Kontext bleibt davon getrennt. Java-Interface-Methoden sind implizit öffentlich,
+sofern sie nicht ausdrücklich private sind.
+
+Nachweise: 35 Regeltests einschließlich der drei neuen Regressionen erfolgreich;
+Clippy -D warnings und IDE-Build erfolgreich. Keine neue Gesamtsuite-/Release-/Docker-
+Prüfung behauptet. T037–T039 erledigt; endgültige Konvergenz noch separat zu prüfen.
+
 ## Zweite Konvergenzkorrektur T033–T036
 
 T033: Geordneter Myers-Abgleich je Regionsherkunft statt Multiset; Zweig-/Schleifen-

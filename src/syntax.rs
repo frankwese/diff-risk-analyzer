@@ -269,7 +269,24 @@ pub fn symbols(profile: Profile, source: &[u8]) -> Option<Vec<Symbol>> {
         };
         symbols.push(Symbol {
             public: match profile {
-                Profile::Java => signature.split_whitespace().any(|w| w == "public"),
+                Profile::Java => {
+                    signature.split_whitespace().any(|w| w == "public")
+                        || !signature.split_whitespace().any(|w| w == "private") && {
+                            let mut parent = node.parent();
+                            let mut interface = false;
+                            while let Some(p) = parent {
+                                if p.kind() == "interface_declaration" {
+                                    interface = true;
+                                    break;
+                                }
+                                if matches!(p.kind(), "class_declaration" | "class_definition") {
+                                    break;
+                                }
+                                parent = p.parent();
+                            }
+                            interface
+                        }
+                }
                 Profile::Python => !name.starts_with('_'),
                 _ => {
                     signature.contains("export")

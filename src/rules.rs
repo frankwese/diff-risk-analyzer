@@ -876,6 +876,22 @@ fn source_regions(profile: Profile, source: &[u8]) -> Result<Vec<SourceRegion>, 
                             | "for_statement"
                             | "while_statement"
                     ) {
+                        if p.kind() == "if_statement" {
+                            let role = if p.child_by_field_name("consequence").is_some_and(|b| {
+                                node.start_byte() >= b.start_byte()
+                                    && node.end_byte() <= b.end_byte()
+                            }) {
+                                "then"
+                            } else if p.child_by_field_name("alternative").is_some_and(|b| {
+                                node.start_byte() >= b.start_byte()
+                                    && node.end_byte() <= b.end_byte()
+                            }) {
+                                "else"
+                            } else {
+                                "condition"
+                            };
+                            parts.push(format!("if-role:{role}"));
+                        }
                         let end = p
                             .child_by_field_name("body")
                             .or_else(|| p.child_by_field_name("consequence"))
@@ -1001,16 +1017,14 @@ fn evaluate_source(file: &FileChange, profile: Profile) -> Result<Vec<Finding>, 
                     })
             });
             add(
-                auth || has_word(
-                    &region.code,
-                    &[
-                        "authenticate",
-                        "authorize",
-                        "checkPermission",
-                        "hasRole",
-                        "verifyToken",
-                    ],
-                ),
+                auth || region_auth_call(profile, source, region.start, region.end)
+                    || matches!(
+                        region.kind.as_str(),
+                        "method_declaration"
+                            | "method_definition"
+                            | "function_definition"
+                            | "function_declaration"
+                    ) && enclosing.is_some_and(|s| AUTH_NAMES.contains(&s.name.as_str())),
                 "AUTH_CHANGE",
                 Level::High,
                 "AuthN/AuthZ change detected; security impact possible",
@@ -1163,7 +1177,7 @@ fn evaluate_source(file: &FileChange, profile: Profile) -> Result<Vec<Finding>, 
                 .iter()
                 .any(|r| position >= r.start && position < r.end)
                 || tests.iter().any(|r| r.contains(&position))
-                || ["{", "}", ";", ":", "export", "default"].contains(&token.as_str())
+                || ["{", "}", ";", ":", "export", "default", "else"].contains(&token.as_str())
             {
                 continue;
             }
@@ -1259,14 +1273,7 @@ fn infrastructure_code(source: &str) -> Result<Vec<String>, AnalysisError> {
 }
 
 fn auth_function(profile: Profile, source: &[u8], symbol: &syntax::Symbol) -> bool {
-    const NAMES: &[&str] = &[
-        "authenticate",
-        "authorize",
-        "checkPermission",
-        "hasRole",
-        "verifyToken",
-    ];
-    if NAMES.contains(&symbol.name.as_str()) {
+    if AUTH_NAMES.contains(&symbol.name.as_str()) {
         return true;
     }
     let Ok(tree) = profile.parse(source) else {
@@ -1312,7 +1319,45 @@ fn auth_function(profile: Profile, source: &[u8], symbol: &syntax::Symbol) -> bo
                     .unwrap_or(function)
             })
         };
-        if name.is_some_and(|n| NAMES.contains(&syntax::text(n, source))) {
+        if name.is_some_and(|n| AUTH_NAMES.contains(&syntax::text(n, source))) {
+            found = true;
+        }
+    });
+    found
+}
+
+const AUTH_NAMES: &[&str] = &[
+    "authenticate",
+    "authorize",
+    "checkPermission",
+    "hasRole",
+    "verifyToken",
+];
+fn region_auth_call(profile: Profile, source: &[u8], start: usize, end: usize) -> bool {
+    let Ok(tree) = profile.parse(source) else {
+        return false;
+    };
+    let mut found = false;
+    syntax::walk(tree.root_node(), &mut |node| {
+        if node.start_byte() < start
+            || node.end_byte() > end
+            || !matches!(
+                node.kind(),
+                "method_invocation" | "call_expression" | "call"
+            )
+        {
+            return;
+        }
+        let name = if profile == Profile::Java {
+            node.child_by_field_name("name")
+        } else {
+            node.child_by_field_name("function").map(|n| {
+                n.child_by_field_name("property")
+                    .or_else(|| n.child_by_field_name("attribute"))
+                    .unwrap_or(n)
+            })
+        };
+        if name.is_some_and(|n| AUTH_NAMES.contains(&syntax::text(n, source))) {
             found = true;
         }
     });

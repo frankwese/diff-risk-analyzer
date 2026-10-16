@@ -1,6 +1,88 @@
 use risk_analyzer::{git::diff_lines, model::FileChange};
 
 #[test]
+fn then_and_else_do_not_share_region_identity() {
+    for path in ["src/a.js", "src/a.ts"] {
+        let old = "function access() { if (ok) { authorize(user); } else { charge(); } }";
+        let new = "function access() { if (ok) { charge(); } else { authorize(user); } }";
+        let findings = risk_analyzer::rules::evaluate(&[change(path, old, new)]).unwrap();
+        assert!(
+            findings.iter().any(|f| f.rule == "AUTH_CONTEXT_CHANGE"),
+            "{path}: {findings:?}"
+        );
+    }
+    let old = "class A { void access() { if (ok) { authorize(user); } else { charge(); } } }";
+    let new = "class A { void access() { if (ok) { charge(); } else { authorize(user); } } }";
+    assert!(
+        risk_analyzer::rules::evaluate(&[change("src/A.java", old, new)])
+            .unwrap()
+            .iter()
+            .any(|f| f.rule == "AUTH_CONTEXT_CHANGE")
+    );
+}
+
+#[test]
+fn auth_identifier_or_method_reference_is_not_a_direct_auth_call() {
+    for new in [
+        "class A { boolean m() { int authorize = 2; return true; } }",
+        "class A { boolean m() { Object ref = service::authorize; return true; } }",
+    ] {
+        let result = risk_analyzer::rules::evaluate(&[change(
+            "src/A.java",
+            "class A { boolean m() { return false; } }",
+            new,
+        )]);
+        assert!(!result.is_ok_and(|f| f.iter().any(|f| f.rule == "AUTH_CHANGE")));
+    }
+    let findings = risk_analyzer::rules::evaluate(&[change(
+        "src/A.java",
+        "class A { void m() {} }",
+        "class A { void m() { authorize(user); } }",
+    )])
+    .unwrap();
+    assert!(findings.iter().any(|f| f.rule == "AUTH_CHANGE"));
+}
+
+#[test]
+fn implicit_public_interface_signatures_are_contracts_but_private_are_not() {
+    for (old, new, id) in [
+        (
+            "interface A { int get(int x); }",
+            "interface A { int get(); }",
+            "CONTRACT_BREAK",
+        ),
+        (
+            "interface A { int get(); }",
+            "interface A {}",
+            "CONTRACT_BREAK",
+        ),
+        (
+            "interface A {}",
+            "interface A { int get(); }",
+            "API_EXTENSION",
+        ),
+    ] {
+        assert!(
+            risk_analyzer::rules::evaluate(&[change("api/A.java", old, new)])
+                .unwrap()
+                .iter()
+                .any(|f| f.rule == id)
+        );
+    }
+    let result = risk_analyzer::rules::evaluate(&[change(
+        "api/A.java",
+        "interface A { private int get() { return 1; } }",
+        "interface A { private int get() { return 2; } }",
+    )])
+    .unwrap();
+    assert!(
+        !result
+            .iter()
+            .any(|f| f.rule == "CONTRACT_BREAK" || f.rule == "API_EXTENSION")
+    );
+}
+
+#[test]
 fn reordered_auth_operations_and_overloads_are_not_unchanged() {
     for (old, new) in [
         (

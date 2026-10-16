@@ -853,7 +853,42 @@ fn source_regions(profile: Profile, source: &[u8]) -> Result<Vec<SourceRegion>, 
                             | "constructor_declaration"
                     ) && let Some(name) = p.child_by_field_name("name")
                     {
-                        parts.push(format!("{}:{}", p.kind(), syntax::text(name, source)));
+                        let header_end = p
+                            .child_by_field_name("body")
+                            .map(|b| b.start_byte())
+                            .unwrap_or(p.end_byte());
+                        let identity = String::from_utf8_lossy(&source[p.start_byte()..header_end])
+                            .split_whitespace()
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        parts.push(format!(
+                            "{}:{}:{}",
+                            p.kind(),
+                            syntax::text(name, source),
+                            identity
+                        ));
+                    }
+                    if matches!(
+                        p.kind(),
+                        "if_statement"
+                            | "else_clause"
+                            | "elif_clause"
+                            | "for_statement"
+                            | "while_statement"
+                    ) {
+                        let end = p
+                            .child_by_field_name("body")
+                            .or_else(|| p.child_by_field_name("consequence"))
+                            .map(|b| b.start_byte())
+                            .unwrap_or(p.start_byte());
+                        parts.push(format!(
+                            "branch:{}:{}",
+                            p.kind(),
+                            String::from_utf8_lossy(&source[p.start_byte()..end])
+                                .split_whitespace()
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        ));
                     }
                     parent = p.parent();
                 }
@@ -903,16 +938,28 @@ fn evaluate_source(file: &FileChange, profile: Profile) -> Result<Vec<Finding>, 
             &file.new,
         ),
     ] {
-        let mut remaining: Vec<_> = opposite
-            .iter()
-            .map(|r| (r.owner.as_str(), r.text.as_str()))
-            .collect();
-        for region in regions {
-            if let Some(i) = remaining
+        let mut unchanged = std::collections::BTreeSet::new();
+        let owners: std::collections::BTreeSet<_> =
+            regions.iter().map(|r| r.owner.as_str()).collect();
+        for owner in owners {
+            let current: Vec<_> = regions
                 .iter()
-                .position(|(owner, text)| *owner == region.owner && *text == region.text)
-            {
-                remaining.remove(i);
+                .enumerate()
+                .filter(|(_, r)| r.owner == owner)
+                .collect();
+            let previous: Vec<_> = opposite.iter().filter(|r| r.owner == owner).collect();
+            let a: Vec<_> = current.iter().map(|(_, r)| r.text.as_str()).collect();
+            let b: Vec<_> = previous.iter().map(|r| r.text.as_str()).collect();
+            for op in similar::capture_diff_slices(similar::Algorithm::Myers, &a, &b) {
+                if let similar::DiffOp::Equal { old_index, len, .. } = op {
+                    for (index, _) in current.iter().skip(old_index).take(len) {
+                        unchanged.insert(*index);
+                    }
+                }
+            }
+        }
+        for (index, region) in regions.iter().enumerate() {
+            if unchanged.contains(&index) {
                 continue;
             }
             changed = true;
@@ -938,6 +985,7 @@ fn evaluate_source(file: &FileChange, profile: Profile) -> Result<Vec<Finding>, 
                     s.name == symbol.name
                         && s.container == symbol.container
                         && s.kind == symbol.kind
+                        && s.signature == symbol.signature
                 });
                 auth || auth_function(profile, source, symbol)
                     || counterpart.is_some_and(|s| {
@@ -1501,69 +1549,7 @@ fn dependency_change(base: &str, old: &str, new: &str) -> Result<bool, AnalysisE
         if base == "pyproject.toml" {
             return toml_dependencies(old, new);
         }
-        if base.starts_with("build.gradle") {
-            for source in [old, new] {
-                validate_gradle_blocks(source)?;
-            }
-        }
-        fn split(base: &str, text: &str) -> (Vec<String>, Vec<String>) {
-            let mut dependency = vec![];
-            let mut other = vec![];
-            let mut active = false;
-            let mut brackets = 0i32;
-            let mut section = String::new();
-            for line in text.lines() {
-                let trimmed = line.trim();
-                if base == "pyproject.toml" {
-                    if trimmed.starts_with('[') && brackets == 0 {
-                        section = trimmed.to_owned();
-                        active = section == "[project.optional-dependencies]"
-                            || section == "[tool.poetry.dependencies]"
-                            || section.starts_with("[tool.poetry.group.")
-                                && section.ends_with(".dependencies]");
-                    }
-                    if section == "[project]" && trimmed.starts_with("dependencies") {
-                        active = true;
-                    }
-                } else if base == "pom.xml" {
-                    if trimmed.contains("<dependencies>") || trimmed.contains("<dependency>") {
-                        active = true;
-                    }
-                } else if trimmed.starts_with("dependencies") && trimmed.contains('{') {
-                    active = true;
-                }
-                if active {
-                    dependency.push(line.into());
-                } else {
-                    other.push(line.into());
-                }
-                if base == "pyproject.toml" && section == "[project]" && active {
-                    brackets += trimmed.chars().filter(|c| *c == '[').count() as i32
-                        - trimmed.chars().filter(|c| *c == ']').count() as i32;
-                    if brackets <= 0 {
-                        active = false;
-                    }
-                } else if base == "pom.xml" && trimmed.contains("</dependencies>") {
-                    active = false;
-                } else if base.starts_with("build.gradle") && active {
-                    brackets += trimmed.chars().filter(|c| *c == '{').count() as i32
-                        - trimmed.chars().filter(|c| *c == '}').count() as i32;
-                    if brackets <= 0 {
-                        active = false;
-                    }
-                }
-            }
-            (dependency, other)
-        }
-        let (a, ao) = split(base, old);
-        let (b, bo) = split(base, new);
-        if a != b && ao != bo {
-            return Err(AnalysisError::new(
-                "UNSUPPORTED_CHANGE",
-                "manifest contains other unclassified changes",
-            ));
-        }
-        return Ok(a != b);
+        return gradle_dependencies(old, new);
     }
     Ok(false)
 }
@@ -1675,7 +1661,7 @@ fn toml_dependencies(old: &str, new: &str) -> Result<bool, AnalysisError> {
 }
 
 fn validate_gradle_blocks(source: &str) -> Result<(), AnalysisError> {
-    let tokens = infrastructure_code(source)?;
+    let tokens = gradle_tokens(source)?;
     let mut depth = 0usize;
     for token in tokens {
         if token == "{" {
@@ -1698,6 +1684,130 @@ fn validate_gradle_blocks(source: &str) -> Result<(), AnalysisError> {
     } else {
         Ok(())
     }
+}
+
+fn gradle_dependencies(old: &str, new: &str) -> Result<bool, AnalysisError> {
+    fn split(source: &str) -> Result<(Vec<Vec<String>>, Vec<String>), AnalysisError> {
+        let error =
+            || AnalysisError::new("UNSUPPORTED_CHANGE", "ambiguous Gradle dependency block");
+        validate_gradle_blocks(source)?;
+        let tokens = gradle_tokens(source)?;
+        let mut dependency = vec![];
+        let mut other = vec![];
+        let mut index = 0;
+        let mut depth = 0usize;
+        while index < tokens.len() {
+            if tokens[index] == "dependencies" {
+                if depth != 0 || tokens.get(index + 1).map(String::as_str) != Some("{") {
+                    return Err(error());
+                }
+                let start = index;
+                index += 2;
+                let mut block_depth = 1;
+                while index < tokens.len() && block_depth > 0 {
+                    match tokens[index].as_str() {
+                        "{" => block_depth += 1,
+                        "}" => block_depth -= 1,
+                        "dependencies" => return Err(error()),
+                        _ => {}
+                    }
+                    index += 1;
+                }
+                if block_depth != 0 {
+                    return Err(error());
+                }
+                dependency.push(tokens[start..index].to_vec());
+                other.push("<dependencies>".into());
+                continue;
+            }
+            match tokens[index].as_str() {
+                "{" => depth += 1,
+                "}" => {
+                    depth = depth.checked_sub(1).ok_or_else(error)?;
+                }
+                _ => {}
+            }
+            other.push(tokens[index].clone());
+            index += 1;
+        }
+        Ok((dependency, other))
+    }
+    let (a, ao) = split(old)?;
+    let (b, bo) = split(new)?;
+    if a != b && ao != bo {
+        return Err(AnalysisError::new(
+            "UNSUPPORTED_CHANGE",
+            "Gradle delta includes non-dependency settings",
+        ));
+    }
+    Ok(a != b)
+}
+
+fn gradle_tokens(source: &str) -> Result<Vec<String>, AnalysisError> {
+    let error = || AnalysisError::new("UNSUPPORTED_CHANGE", "invalid Gradle literal or comment");
+    let mut chars = source.chars().peekable();
+    let mut tokens = vec![];
+    let mut word = String::new();
+    while let Some(c) = chars.next() {
+        if c == '\'' || c == '"' {
+            if !word.is_empty() {
+                tokens.push(std::mem::take(&mut word));
+            }
+            let mut literal = c.to_string();
+            let mut closed = false;
+            while let Some(n) = chars.next() {
+                literal.push(n);
+                if n == '\\' {
+                    literal.push(chars.next().ok_or_else(error)?);
+                } else if n == c {
+                    closed = true;
+                    break;
+                }
+            }
+            if !closed {
+                return Err(error());
+            }
+            tokens.push(literal);
+        } else if c == '/' && chars.peek() == Some(&'/') {
+            if !word.is_empty() {
+                tokens.push(std::mem::take(&mut word));
+            }
+            for n in chars.by_ref() {
+                if n == '\n' {
+                    break;
+                }
+            }
+        } else if c == '/' && chars.peek() == Some(&'*') {
+            chars.next();
+            if !word.is_empty() {
+                tokens.push(std::mem::take(&mut word));
+            }
+            let mut closed = false;
+            while let Some(n) = chars.next() {
+                if n == '*' && chars.peek() == Some(&'/') {
+                    chars.next();
+                    closed = true;
+                    break;
+                }
+            }
+            if !closed {
+                return Err(error());
+            }
+        } else if c.is_whitespace() || "{}[]=(),;.".contains(c) {
+            if !word.is_empty() {
+                tokens.push(std::mem::take(&mut word));
+            }
+            if !c.is_whitespace() {
+                tokens.push(c.to_string());
+            }
+        } else {
+            word.push(c);
+        }
+    }
+    if !word.is_empty() {
+        tokens.push(word);
+    }
+    Ok(tokens)
 }
 fn css_visual(old: &str, new: &str) -> bool {
     fn parse(s: &str) -> Option<BTreeMap<String, BTreeMap<String, String>>> {

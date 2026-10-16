@@ -2,6 +2,29 @@
 
 **Stand**: Dokumentenmigration am 2026-10-13, Basiscommit eb5de1e.
 **Status**: Bestätigte Auth-Kontextkorrektur T026 umgesetzt und gezielt validiert.
+
+## Zweite Konvergenzkorrektur T033–T036
+
+T033: Geordneter Myers-Abgleich je Regionsherkunft statt Multiset; Zweig-/Schleifen-
+zugehörigkeit Teil der Herkunft. Verschobene Auth-Prüfung oder getauschte Operations-
+reihenfolge bleibt eine Änderung. T034: Deklarationsheader/Signatur Teil der Herkunft;
+Auth-Gegenparts benötigen dieselbe Signatur statt beliebiger gleichnamiger Überladung.
+
+T035: Interner CLI-Einstieg erfordert Supervisor-PID als unmittelbaren Elternprozess
+und die eigene Prozessgruppenführerschaft. Normaler direkter Aufruf wird Exit 2 und
+stdout leer; Supervisor startet Worker passend. CPU-Endlosschleife im kontrollierten
+Prozessdummy wird nach 1s beendet und eingesammelt. Keine Nutzeroption zum Budget-Bypass.
+
+T036: Eigener literal-/kommentarbewusster Gradle-Tokenstrom; genau abgegrenzte top-level
+dependencies-Blöcke inklusive verschachtelter Konfigurationsblöcke. Nachbareinstellungen
+derselben Zeile bleiben im separaten Restvergleich. Mehrdeutige verschachtelte
+dependencies-Blöcke abgelehnt; Klammern in Strings/Kommentaren verfälschen Grenzen nicht.
+
+Finale lokale Validierung: cargo test --locked erfolgreich mit 22 Unit-, 20 bestehenden
+Zuordnungskompatibilitäts-, 10 CLI-, 12 Git- und 32 Regeltests (96 Testfunktionen plus
+Datenfälle). Clippy -D warnings, Whitespaceprüfung und IDE-Build erfolgreich.
+T033–T036 erledigt; alle 36 derzeitigen 002-Aufgaben abgearbeitet. Keine Commits/Docker-
+oder Releasebuilds. Erneute Konvergenzprüfung ist nicht durch diese Umsetzung ersetzt.
 Der ursprüngliche Abschluss hatte diesen Kontext nicht ausreichend abgesichert.
 
 ## Konvergenzkorrekturen T027–T032 umgesetzt

@@ -29,6 +29,10 @@ this context; comments, literals and checks in other functions do not.
 Unknown neighboring statements are not covered by another matched rule. Conventional
 test filenames do not exempt changed production method bodies from assessment.
 OpenAPI metadata alongside a schema change and unsupported YAML aliases/tags fail explicitly.
+Statement comparisons retain sequence, branch ownership and declaration signatures;
+moving an authorization check after an operation is not considered unchanged.
+Gradle dependency blocks are token-delimited, including literal/comment handling;
+unrelated settings on the same line are not covered by a dependency signal.
 
 Java/JavaScript/TypeScript/Python syntax is parsed without executing repository code.
 Changed test cases must actually use a changed symbol; a matching filename is insufficient.

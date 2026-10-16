@@ -1,6 +1,59 @@
 use risk_analyzer::{git::diff_lines, model::FileChange};
 
 #[test]
+fn reordered_auth_operations_and_overloads_are_not_unchanged() {
+    for (old, new) in [
+        (
+            "class A { void m() { authorize(user); charge(); } }",
+            "class A { void m() { charge(); authorize(user); } }",
+        ),
+        (
+            "class A { boolean m(int x) { authorize(user); return false; } boolean m() { return true; } }",
+            "class A { boolean m(int x) { authorize(user); return true; } boolean m() { return false; } }",
+        ),
+        (
+            "function m() { if (ok) { authorize(user); } else { charge(); } }",
+            "function m() { if (ok) { charge(); } else { authorize(user); } }",
+        ),
+    ] {
+        let findings = risk_analyzer::rules::evaluate(&[change("src/A.java", old, new)]);
+        let findings = if old.starts_with("function") {
+            risk_analyzer::rules::evaluate(&[change("src/a.js", old, new)]).unwrap()
+        } else {
+            findings.unwrap()
+        };
+        assert!(
+            findings.iter().any(|f| f.rule == "AUTH_CONTEXT_CHANGE"),
+            "{findings:?}"
+        );
+    }
+}
+
+#[test]
+fn gradle_blocks_preserve_literal_braces_and_exclude_same_line_neighbors() {
+    let old = "dependencies { implementation('x:1') { exclude group: 'a' } }; otherSetting = 'old'";
+    let new = "dependencies { implementation('x:2') { exclude group: 'a' } }; otherSetting = 'new'";
+    assert!(risk_analyzer::rules::evaluate(&[change("build.gradle", old, new)]).is_err());
+    for (old, new) in [
+        (
+            "dependencies { implementation 'x:{1}' } // }",
+            "dependencies { implementation 'x:{2}' } // }",
+        ),
+        (
+            "dependencies { implementation('x:1') { exclude group: 'a' } }",
+            "dependencies { implementation('x:2') { exclude group: 'a' } }",
+        ),
+    ] {
+        assert!(
+            risk_analyzer::rules::evaluate(&[change("build.gradle", old, new)])
+                .unwrap()
+                .iter()
+                .any(|f| f.rule == "DEPENDENCY_UPDATE")
+        );
+    }
+}
+
+#[test]
 fn dependency_markers_do_not_hide_xml_neighbors_or_unclosed_blocks() {
     for (path, old, new) in [
         (

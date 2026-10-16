@@ -99,3 +99,17 @@ durch schwächere Anforderungen oder geänderte Abschlusskriterien zu ersetzen.
 Abhängigkeiten: T027 zuerst; T028 vor T029. T030 und T031 können in getrennten
 Arbeitsschritten umgesetzt werden, gemeinsame Module nicht gleichzeitig verändern.
 T032 folgt allen Codekorrekturen. Danach erneut `/speckit.converge` für Feature 002.
+
+## Phase 7: Convergence
+
+Erneuter Code-/Intent-Abgleich nach Umsetzung von T027–T032; bestehende Aufgaben und
+Erledigtmarker bleiben unverändert. Folgende Restabweichungen sind noch zu beheben:
+
+- [X] T033 [US1] CRITICAL: Ersetze den ungeordneten Regions-Multiset-Abgleich innerhalb einer Funktion in `src/rules.rs` durch einen geordneten, kontrollstrukturbezogenen Vergleich. Das Verschieben einer Auth-Prüfung hinter eine Operation oder zwischen unterschiedlichen Zweigen darf nicht als unveränderte beziehungsweise nicht ausführbare Änderung LOW liefern. Ergänze in `tests/rules.rs` Regressionen für vertauschte Anweisungen derselben Funktion, verschobene Auth-Prüfung und geänderte Zweigzugehörigkeit; unveränderte Formatierung weiterhin getrennt behandeln, per Constitution IV/V, FR-006/FR-008/FR-011 und T028 (contradicts; F7).
+- [X] T034 [US1] Ergänze eindeutige Deklarations-/Signaturidentität für SourceRegion-Herkunft und Auth-Kontext-Gegenparts in `src/rules.rs` und bei Bedarf `src/syntax.rs`; gleichnamige überladene Methoden dürfen keine Regionen gegenseitig ausgleichen oder den Auth-Kontext eines beliebigen ersten Gegenparts übernehmen. Prüfe in `tests/rules.rs` getauschte Returns zwischen Überladungen und unterschiedliche Auth-Kontexte gleicher Methodennamen; nicht eindeutig zuordenbare Formen ausdrücklich als nicht bewertbar behandeln, per FR-008/FR-011 und T028/T029 (partial; F8).
+- [X] T035 [US2] Verhindere in `src/cli.rs`, dass der öffentlich direkt aufrufbare Schalter `--internal-analysis` die Gesamttimeout-/Cleanup-Grenze umgeht. Binde den internen Einstieg an die tatsächlich überwachte Prozessausführung oder stelle dieselbe harte Grenze für jeden unterstützten Analysepfad sicher; ergänze kurze kontrollierte Regressionen in `tests/cli.rs` beziehungsweise CLI-Unit-Tests für direkten internen Aufruf, blockierte CPU-/Prozessanalyse, Exitstatus und Cleanup. Kein erfolgreicher Analyseweg darf ohne die vereinbarte 60s-Grenze laufen, per FR-007/SC-005, plan: 60s Gesamtlaufzeit und T031 (contradicts; F9).
+- [X] T036 [US1] Ersetze die verbliebene zeilenbasierte Gradle-Dependency-Abgrenzung in `src/rules.rs` durch literal-/kommentarbewusste Token- beziehungsweise Bytebereichsgrenzen des tatsächlichen dependencies-Blocks. Änderungen an anderen Einstellungen vor/nach dem Block auf derselben Zeile dürfen nicht als Dependency-Update mitbewertet werden. Ergänze in `tests/rules.rs` einzeilige Blocks mit veränderter Nachbareinstellung, verschachtelten Blocks, Klammern in Strings/Kommentaren und reinem Dependency-Update; mehrdeutige Konstrukte konservativ ablehnen, per FR-008 und T015/T030 (partial; F10).
+
+T033 vor T034 im gemeinsamen Regionsvergleich bearbeiten. T035 betrifft die
+CLI-Prozessgrenze; T036 die Manifestabgrenzung. Nach den Korrekturen gezielte
+Regressions-/Kompatibilitätsprüfungen dokumentieren und erneut für 002 konvergieren.

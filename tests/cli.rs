@@ -1,6 +1,25 @@
 use std::process::Command;
 
 #[test]
+fn direct_internal_entry_cannot_skip_supervisor() {
+    let output = Command::new(env!("CARGO_BIN_EXE_risk-analyzer"))
+        .args(["--internal-analysis", "HEAD..HEAD"])
+        .env_remove("RISK_ANALYZER_SUPERVISOR")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("requires its supervisor"));
+    let output = Command::new(env!("CARGO_BIN_EXE_risk-analyzer"))
+        .args(["--internal-analysis", "HEAD..HEAD"])
+        .env("RISK_ANALYZER_SUPERVISOR", "0")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+}
+
+#[test]
 fn auth_context_cli_regressions_are_stable_for_rule_version_110() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();

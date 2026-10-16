@@ -3,6 +3,18 @@ use std::ffi::OsString;
 pub fn run(args: impl Iterator<Item = OsString>) -> i32 {
     let args: Vec<_> = args.collect();
     if args.first().is_some_and(|a| a == "--internal-analysis") {
+        let authorized = std::env::var("RISK_ANALYZER_SUPERVISOR")
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok())
+            .is_some_and(|pid| {
+                pid == unsafe { libc::getppid() } as u32
+                    && unsafe { libc::getpgrp() } == unsafe { libc::getpid() }
+            });
+        if !authorized {
+            return emit(Err(crate::model::AnalysisError::input(
+                "internal analysis requires its supervisor",
+            )));
+        }
         let result = parse_range(&args[1..]).and_then(|(base, target)| analyze(&base, &target));
         return emit(result);
     }
@@ -35,6 +47,7 @@ pub fn run(args: impl Iterator<Item = OsString>) -> i32 {
                 .and_then(|exe| {
                     let mut command = std::process::Command::new(exe);
                     command.args(["--internal-analysis", &format!("{base}..{target}")]);
+                    command.env("RISK_ANALYZER_SUPERVISOR", std::process::id().to_string());
                     supervise(command, crate::model::Budget::default())
                 });
             match result {
@@ -236,6 +249,30 @@ mod supervisor_tests {
         command.args([
             "-c",
             &format!("echo $$ > '{}'; /bin/sleep 30 & wait", pid.display()),
+        ]);
+        let start = std::time::Instant::now();
+        let result = super::supervise(
+            command,
+            crate::model::Budget::for_duration(std::time::Duration::from_secs(1)),
+        );
+        assert_eq!(result.unwrap_err().exit, 1);
+        assert!(start.elapsed() < std::time::Duration::from_secs(2));
+        let pid = std::fs::read_to_string(pid)
+            .unwrap()
+            .trim()
+            .parse::<i32>()
+            .unwrap();
+        assert_eq!(unsafe { libc::kill(pid, 0) }, -1);
+    }
+
+    #[test]
+    fn total_timeout_stops_cpu_bound_analysis_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid = dir.path().join("pid");
+        let mut command = std::process::Command::new("/bin/sh");
+        command.args([
+            "-c",
+            &format!("echo $$ > '{}'; while :; do :; done", pid.display()),
         ]);
         let start = std::time::Instant::now();
         let result = super::supervise(

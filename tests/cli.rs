@@ -1,6 +1,50 @@
 use std::process::Command;
 
 #[test]
+fn core_findings_preserve_order_sides_locations_and_deduplication() {
+    use risk_analyzer::{git::diff_lines, model::FileChange};
+    let make = |path: &str, old: &str, new: &str| FileChange {
+        old_path: Some(path.as_bytes().to_vec()),
+        new_path: Some(path.as_bytes().to_vec()),
+        old_mode: "100644".into(),
+        new_mode: "100644".into(),
+        old_oid: "a".repeat(40),
+        new_oid: "b".repeat(40),
+        status: "M".into(),
+        old: old.as_bytes().to_vec(),
+        new: new.as_bytes().to_vec(),
+        lines: diff_lines(old.as_bytes(), new.as_bytes()).unwrap(),
+    };
+    let auth = make(
+        "src/auth/A.java",
+        "class A { boolean m() { return true; } }",
+        "class A { boolean m() { return false; } }",
+    );
+    let docs = make("docs/a\n.md", "old", "new");
+    let findings = risk_analyzer::rules::evaluate(&[docs.clone(), auth.clone(), auth]).unwrap();
+    assert_eq!(
+        findings.iter().filter(|f| f.rule == "DOC_CHANGE").count(),
+        1
+    );
+    assert_eq!(
+        findings.iter().filter(|f| f.rule == "AUTH_CHANGE").count(),
+        2
+    );
+    let output = risk_analyzer::cli::render(&findings);
+    assert!(output.starts_with("Risk: HIGH\nReasons:\n- [AUTH_CHANGE]"));
+    assert!(output.contains("(base:1)"));
+    assert!(output.contains("(target:1)"));
+    assert!(output.contains("docs/a\\n.md (metadata)"));
+    assert!(!output.contains('\r'));
+    assert!(!output.contains('\u{1b}'));
+    for _ in 0..10 {
+        assert_eq!(risk_analyzer::cli::render(&findings), output);
+    }
+    let empty = risk_analyzer::cli::render(&[]);
+    assert!(empty.starts_with("Risk: LOW\nReasons:\n- No changes"));
+}
+
+#[test]
 fn git_process_failures_reach_cli_without_partial_output_or_secrets() {
     use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
@@ -31,6 +75,58 @@ fn git_process_failures_reach_cli_without_partial_output_or_secrets() {
             assert_eq!(output.status.code(), Some(1));
             assert!(stderr.contains("GIT_FAILED"));
         }
+    }
+}
+
+#[test]
+fn unavailable_or_unsuitable_git_is_exit_one_without_analysis_output() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_risk-analyzer"))
+            .env("PATH", dir.path())
+            .current_dir(dir.path())
+            .arg("HEAD~1..HEAD")
+            .output()
+            .unwrap()
+    };
+    let assert_unavailable = |output: std::process::Output| {
+        assert_eq!(output.status.code(), Some(1));
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("GIT_UNAVAILABLE"));
+    };
+    assert_unavailable(run());
+    let dummy = dir.path().join("git");
+    for version in ["git version 2.48.0", "not-a-git-version"] {
+        std::fs::write(&dummy, format!("#!/bin/sh\nprintf '%s\\n' '{version}'\n")).unwrap();
+        std::fs::set_permissions(&dummy, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_unavailable(run());
+    }
+    std::fs::set_permissions(&dummy, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert_unavailable(run());
+}
+
+#[test]
+fn outside_repository_is_exit_two_but_help_and_version_need_no_git() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_risk-analyzer"))
+        .current_dir(dir.path())
+        .arg("HEAD~1..HEAD")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("INVALID_INPUT"));
+    for arg in ["--help", "--version"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_risk-analyzer"))
+            .env("PATH", dir.path())
+            .current_dir(dir.path())
+            .arg(arg)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert!(!output.stdout.is_empty());
+        assert!(output.stderr.is_empty());
     }
 }
 
@@ -204,7 +300,14 @@ fn representative_100_file_10000_line_diff() {
     git(&["add", "."]);
     git(&["commit", "-qm", "target"]);
     let start = std::time::Instant::now();
-    let output = Command::new(env!("CARGO_BIN_EXE_risk-analyzer"))
+    let mut command = if cfg!(target_os = "macos") {
+        let mut command = Command::new("/usr/bin/time");
+        command.args(["-l", env!("CARGO_BIN_EXE_risk-analyzer")]);
+        command
+    } else {
+        Command::new(env!("CARGO_BIN_EXE_risk-analyzer"))
+    };
+    let output = command
         .current_dir(root)
         .arg("HEAD~1..HEAD")
         .output()
@@ -216,4 +319,10 @@ fn representative_100_file_10000_line_diff() {
     );
     assert!(output.stdout.starts_with(b"Risk: LOW\n"));
     println!("100 files / 10000 changed lines: {:?}", start.elapsed());
+    if cfg!(target_os = "macos") {
+        println!(
+            "CLI resource measurement:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 }

@@ -29,6 +29,7 @@ impl Profile {
     }
 
     pub fn parse(self, source: &[u8]) -> Result<Tree, &'static str> {
+        std::str::from_utf8(source).map_err(|_| "source is not UTF-8")?;
         if self == Self::Java && source.windows(2).any(|w| w == b"\\u") {
             return Err("Java Unicode escapes are outside the supported syntax profile");
         }
@@ -90,13 +91,32 @@ pub fn code_tokens(profile: Profile, source: &[u8]) -> Option<Vec<(String, usize
         }
         if matches!(
             node.kind(),
-            "string" | "string_literal" | "character_literal" | "template_string"
+            "string" | "string_literal" | "character_literal" | "template_string" | "regex"
         ) {
             tokens.push((
                 format!("<literal:{}>", text(node, source)),
                 node.start_position().row + 1,
                 node.start_position().column,
             ));
+            // Literal text is opaque, but interpolation expressions execute at runtime.
+            fn interpolations(
+                node: tree_sitter::Node<'_>,
+                source: &[u8],
+                tokens: &mut Vec<(String, usize, usize)>,
+            ) {
+                let mut cursor = node.walk();
+                for child in node.named_children(&mut cursor) {
+                    if matches!(child.kind(), "template_substitution" | "interpolation") {
+                        let mut expression_cursor = child.walk();
+                        for expression in child.named_children(&mut expression_cursor) {
+                            collect(expression, source, tokens);
+                        }
+                    } else {
+                        interpolations(child, source, tokens);
+                    }
+                }
+            }
+            interpolations(node, source, tokens);
             return;
         }
         if node.child_count() == 0 {
@@ -270,7 +290,129 @@ pub fn symbols(profile: Profile, source: &[u8]) -> Option<Vec<Symbol>> {
 
 #[cfg(test)]
 mod tests {
-    use super::Profile;
+    use super::{Profile, code_tokens, neutral};
+
+    #[test]
+    fn comments_are_ignored_but_literals_and_docstrings_are_preserved() {
+        for (profile, old, new) in [
+            (
+                Profile::Java,
+                "class A {} // before",
+                "class A {} // authorize()",
+            ),
+            (
+                Profile::JavaScript,
+                "const x = 1; // before",
+                "const x = 1; // authorize()",
+            ),
+            (
+                Profile::TypeScript,
+                "const x: number = 1; // before",
+                "const x: number = 1; // authorize()",
+            ),
+            (Profile::Python, "x = 1 # before\n", "x = 1 # authorize()\n"),
+        ] {
+            assert!(
+                neutral(profile, old.as_bytes(), new.as_bytes()),
+                "{profile:?}"
+            );
+            assert!(
+                !code_tokens(profile, new.as_bytes())
+                    .unwrap()
+                    .iter()
+                    .any(|(t, _, _)| t == "authorize")
+            );
+        }
+        assert!(!neutral(
+            Profile::Python,
+            b"def f():\n    \"\"\"old\"\"\"\n    return 1\n",
+            b"def f():\n    \"\"\"new\"\"\"\n    return 1\n"
+        ));
+        assert!(!neutral(
+            Profile::Java,
+            b"class A { String x = \"a\"; }",
+            b"class A { String x = \"b\"; }"
+        ));
+    }
+
+    #[test]
+    fn interpolations_are_code_but_template_text_and_regex_are_not() {
+        for (profile, source) in [
+            (
+                Profile::JavaScript,
+                "const x = `authorize ${authorize(user)}`;",
+            ),
+            (
+                Profile::TypeScript,
+                "const x: string = `authorize ${authorize(user)}`;",
+            ),
+            (Profile::Python, "x = f'authorize {authorize(user)}'\n"),
+        ] {
+            let tokens = code_tokens(profile, source.as_bytes()).unwrap();
+            assert_eq!(
+                tokens.iter().filter(|(t, _, _)| t == "authorize").count(),
+                1,
+                "{profile:?}: {tokens:?}"
+            );
+        }
+        let tokens = code_tokens(
+            Profile::JavaScript,
+            b"const pattern = /authorize(user)/; const text = `authorize(user)`;",
+        )
+        .unwrap();
+        assert!(!tokens.iter().any(|(t, _, _)| t == "authorize"));
+        let nested = code_tokens(
+            Profile::JavaScript,
+            b"const x = `${`inner ${authorize(user)}`}`;",
+        )
+        .unwrap();
+        assert_eq!(
+            nested.iter().filter(|(t, _, _)| t == "authorize").count(),
+            1
+        );
+    }
+
+    #[test]
+    fn invalid_syntax_and_missing_tokens_never_establish_neutrality() {
+        for (profile, source) in [
+            (Profile::Java, "class A {"),
+            (Profile::JavaScript, "const x = ;"),
+            (Profile::TypeScript, "const x: = ;"),
+            (Profile::Python, "def f(:\n"),
+        ] {
+            assert!(profile.parse(source.as_bytes()).is_err());
+            assert!(code_tokens(profile, source.as_bytes()).is_none());
+            assert!(!neutral(profile, source.as_bytes(), source.as_bytes()));
+        }
+        assert!(Profile::JavaScript.parse(b"//\xff").is_err());
+        assert!(Profile::Java.parse(b"class A {} // \\u0061").is_err());
+    }
+
+    #[test]
+    fn significant_layout_and_token_boundaries_are_not_neutral() {
+        assert!(!neutral(
+            Profile::Python,
+            b"if ok:\n    x = 1\ny = 2\n",
+            b"if ok:\n    x = 1\n    y = 2\n"
+        ));
+        for profile in [Profile::JavaScript, Profile::TypeScript] {
+            assert!(!neutral(
+                profile,
+                b"function f() { return 1; }",
+                b"function f() { return\n1; }"
+            ));
+        }
+        assert!(!neutral(
+            Profile::Java,
+            b"class A { int x = 1 + 2; }",
+            b"class A { int x = 1 - 2; }"
+        ));
+        assert!(neutral(
+            Profile::Java,
+            b"class A { int x=1; }",
+            b"class A {\n int x = 1;\n}"
+        ));
+    }
 
     #[test]
     fn all_embedded_grammars_parse_classes_and_calls() {

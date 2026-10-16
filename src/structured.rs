@@ -57,6 +57,9 @@ impl<'de> Deserialize<'de> for Unique {
                         return Err(de::Error::custom("duplicate mapping key"));
                     }
                     let Unique(v) = map.next_value()?;
+                    if values.len() >= 100000 {
+                        return Err(de::Error::custom("element limit"));
+                    }
                     values.insert(key, v);
                 }
                 Ok(Unique(Value::Object(values)))

@@ -1,6 +1,8 @@
 # Risk Rules Contract v1.0.0
 
 **Owner**: Feature 002. Übernommen aus Gesamt-Spec 001 ohne Änderung der Regeln.
+Die Implementierung verwendet Syntaxbereiche für Quellanweisungen/-deklarationen,
+damit unveränderte Nachbaraufrufe nicht durch Zeilendiffs zu neuen Befunden werden.
 Testklassifikation bleibt Kernaufgabe; symbolbezogene Testnutzung besitzt Feature 003.
 
 ## Evaluation and coverage
@@ -19,6 +21,8 @@ Bereich ab; keine pauschale Vollbewertung aller restlichen Dateiänderungen.
 Für Quellen/SQL/CSS Kommentare nach unterstütztem Lexer/Parser abgrenzen. Source-Strings
 werden nicht als ausführbare Symbolaufrufe gewertet, aber SQL-Stringmuster dürfen QUERY
 auslösen. Reiner String mit Risikobegriff ohne passenden Operation-/Pfadbefund nicht HIGH.
+Eingebettete Template-/f-String-Ausdrücke sind ausführbarer Code, kein Literaltext;
+Regex-Inhalte dagegen keine Operationsidentifier. Literalinhalt bleibt für Neutralität erhalten.
 Nichtdecodierbarer Inhalt oder unbekannte substanzielle Region → UNSUPPORTED_CHANGE.
 Ein bekanntes HIGH mit einer unabhängigen unbekannten Region bleibt unvollständig.
 
@@ -88,6 +92,10 @@ statische englische Rationale aus spec.md sinngemäß ausgeben, niemals Quelltex
   JSON via serde_json, doppelte Schlüssel ebenfalls ablehnen. Beide Deserialisierer
   müssen doppelte Schlüssel vor einer verlustbehafteten Map-Konvertierung erkennen;
   keine Tag-Ausführung oder Alias-/Rekursionsumgehung der Ressourcenlimits.
+  YAML-Aliase/Tags werden im aktuellen endlichen Profil vollständig abgelehnt;
+  Metadatenänderungen neben einer OpenAPI-Erweiterung bleiben nicht bewertbar.
+  Für Manifeste gelten die dokumentierten einfachen Abschnitt-/Blockkonventionen;
+  unbekannte Metadatenänderungen werden nicht vom Dependency-Signal abgedeckt.
 
 ## Region accounting
 

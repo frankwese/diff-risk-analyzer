@@ -365,3 +365,66 @@ fn added_and_deleted_file_models_keep_missing_sides_empty() {
     );
     assert_eq!(git_reader.compare("HEAD^!", "HEAD").unwrap_err().exit, 2);
 }
+
+#[test]
+fn sha256_repository_and_subdirectory_return_same_committed_comparison() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    git(root, &["init", "-q", "--object-format=sha256"]);
+    git(root, &["config", "user.name", "Fixture"]);
+    git(root, &["config", "user.email", "fixture@example.invalid"]);
+    fs::create_dir_all(root.join("nested/subdir")).unwrap();
+    fs::write(root.join("README.md"), "before\n").unwrap();
+    git(root, &["add", "."]);
+    git(root, &["commit", "-qm", "base"]);
+    fs::write(root.join("README.md"), "after\n").unwrap();
+    git(root, &["add", "."]);
+    git(root, &["commit", "-qm", "target"]);
+    // A staged change must not enter the explicit commit comparison.
+    fs::write(root.join("README.md"), "staged\n").unwrap();
+    git(root, &["add", "README.md"]);
+    fs::write(root.join("README.md"), "dirty\n").unwrap();
+    let snapshot = || {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        (
+            output.stdout,
+            fs::read(root.join(".git/HEAD")).unwrap(),
+            fs::read(root.join(".git/index")).unwrap(),
+            fs::read(root.join("README.md")).unwrap(),
+        )
+    };
+    let before = snapshot();
+    let direct = Git::open(root, Budget::default())
+        .unwrap()
+        .compare("HEAD~1", "HEAD")
+        .unwrap();
+    let nested = Git::open(&root.join("nested/subdir"), Budget::default())
+        .unwrap()
+        .compare("HEAD~1", "HEAD")
+        .unwrap();
+    assert_eq!(direct.base.len(), 64);
+    assert_eq!(direct.target.len(), 64);
+    assert_eq!(direct.root, nested.root);
+    assert_eq!(direct.base, nested.base);
+    assert_eq!(direct.target, nested.target);
+    assert_eq!(direct.files.len(), 1);
+    assert_eq!(nested.files.len(), 1);
+    for file in [&direct.files[0], &nested.files[0]] {
+        assert_eq!(file.path(), b"README.md");
+        assert_eq!(file.old, b"before\n");
+        assert_eq!(file.new, b"after\n");
+        assert_eq!(file.old_oid.len(), 64);
+        assert_eq!(file.new_oid.len(), 64);
+    }
+    assert_eq!(
+        snapshot(),
+        before,
+        "analysis changed HEAD, index, or worktree"
+    );
+}

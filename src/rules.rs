@@ -32,7 +32,30 @@ pub fn segments(path: &str, names: &[&str]) -> bool {
 }
 fn has_word(text: &str, words: &[&str]) -> bool {
     text.split(|c: char| !c.is_alphanumeric() && c != '_')
-        .any(|s| words.iter().any(|w| s.eq_ignore_ascii_case(w)))
+        .any(|s| {
+            if words.iter().any(|w| s.eq_ignore_ascii_case(w)) {
+                return true;
+            }
+            let mut start = 0;
+            let chars: Vec<_> = s.char_indices().collect();
+            for (i, (offset, c)) in chars.iter().enumerate() {
+                let boundary = *c == '_'
+                    || i > 0
+                        && c.is_uppercase()
+                        && (chars[i - 1].1.is_lowercase()
+                            || chars.get(i + 1).is_some_and(|(_, n)| n.is_lowercase()));
+                if boundary {
+                    if words
+                        .iter()
+                        .any(|w| s[start..*offset].eq_ignore_ascii_case(w))
+                    {
+                        return true;
+                    }
+                    start = if *c == '_' { offset + 1 } else { *offset };
+                }
+            }
+            words.iter().any(|w| s[start..].eq_ignore_ascii_case(w))
+        })
 }
 fn finding(
     file: &FileChange,
@@ -157,7 +180,7 @@ fn evaluate_file(file: &FileChange) -> Result<Vec<Finding>, AnalysisError> {
             None,
         )]);
     }
-    if crate::association::is_test_file(file) {
+    if pure_test_change(file) {
         return Ok(vec![finding(
             file,
             "TEST_CHANGE",
@@ -180,6 +203,12 @@ fn evaluate_file(file: &FileChange) -> Result<Vec<Finding>, AnalysisError> {
     }
     let old = std::str::from_utf8(&file.old).map_err(|_| unsupported())?;
     let new = std::str::from_utf8(&file.new).map_err(|_| unsupported())?;
+    if file.old.contains(&0) || file.new.contains(&0) {
+        return Err(unsupported());
+    }
+    if let Some(profile) = profile {
+        return evaluate_source(file, profile);
+    }
     if path.ends_with(".css") {
         if css_visual(old, new) {
             return Ok(vec![finding(
@@ -208,6 +237,7 @@ fn evaluate_file(file: &FileChange) -> Result<Vec<Finding>, AnalysisError> {
         let b = structured(new, base)?;
         validate_openapi(&a)?;
         validate_openapi(&b)?;
+        validate_api_delta(&a, &b)?;
         let (added, broken) = api_changes(&a, &b);
         if broken {
             result.push(finding(
@@ -281,6 +311,16 @@ fn evaluate_file(file: &FileChange) -> Result<Vec<Finding>, AnalysisError> {
             structured(old, base)?;
             structured(new, base)?;
         }
+        if old == new || sql_code(old) == sql_code(new) {
+            return Ok(vec![finding(
+                file,
+                "DOC_CHANGE",
+                Level::Low,
+                "Only infrastructure comments changed",
+                Side::Metadata,
+                None,
+            )]);
+        }
         return Ok(vec![finding(
             file,
             "SECRET_IAM_PROD",
@@ -318,6 +358,9 @@ fn evaluate_file(file: &FileChange) -> Result<Vec<Finding>, AnalysisError> {
     let new_offsets = offsets(&file.new);
     let old_sql = sql_code(old);
     let new_sql = sql_code(new);
+    if path.ends_with(".sql") && [old, new].iter().any(|s| !sql_balanced(s)) {
+        return Err(unsupported());
+    }
     for line in &file.lines {
         let code;
         if profile.is_some() {
@@ -600,6 +643,437 @@ fn evaluate_file(file: &FileChange) -> Result<Vec<Finding>, AnalysisError> {
     Ok(result)
 }
 
+fn pure_test_change(file: &FileChange) -> bool {
+    if !is_test(file.path()) && !crate::association::is_test_file(file) {
+        return false;
+    }
+    let Some(profile) = Profile::for_path(file.path()) else {
+        return is_test(file.path());
+    };
+    // A conventional test path is evidence of test intent, not permission to hide changed production bodies.
+    for (source, side) in [(&file.old, Side::Base), (&file.new, Side::Target)] {
+        let Some(symbols) = syntax::symbols(profile, source) else {
+            return false;
+        };
+        let tests = crate::association::test_ranges(profile, source);
+        let tree = profile.parse(source).ok();
+        let mut changed_field = false;
+        if let Some(tree) = tree {
+            syntax::walk(tree.root_node(), &mut |node| {
+                if matches!(node.kind(), "field_declaration" | "public_field_definition") {
+                    let text = syntax::text(node, source);
+                    let other = if side == Side::Base {
+                        &file.new
+                    } else {
+                        &file.old
+                    };
+                    if !String::from_utf8_lossy(other).contains(text) {
+                        changed_field = true;
+                    }
+                }
+            });
+        }
+        if changed_field {
+            return false;
+        }
+        for symbol in symbols.iter().filter(|s| s.kind != "CLASS") {
+            if tests.iter().any(|r| r.contains(&symbol.start)) {
+                continue;
+            }
+            if file.lines.iter().any(|l| {
+                l.side == side
+                    && l.number >= symbol.line
+                    && l.number <= source[..symbol.end].iter().filter(|b| **b == b'\n').count() + 1
+            }) {
+                let body = String::from_utf8_lossy(&symbol.bytes);
+                if body
+                    .rsplit_once('{')
+                    .is_some_and(|(_, tail)| tail.chars().all(|c| c.is_whitespace() || c == '}'))
+                {
+                    continue;
+                }
+                return false;
+            }
+        }
+    }
+    true
+}
+
+#[derive(Clone)]
+struct SourceRegion {
+    start: usize,
+    end: usize,
+    line: usize,
+    text: String,
+    code: String,
+    kind: String,
+}
+
+fn source_regions(profile: Profile, source: &[u8]) -> Result<Vec<SourceRegion>, AnalysisError> {
+    let tree = profile.parse(source).map_err(|_| {
+        AnalysisError::new(
+            "UNSUPPORTED_CHANGE",
+            "source is outside the readable syntax profile",
+        )
+    })?;
+    let tests = crate::association::test_ranges(profile, source);
+    let tokens = syntax::code_tokens(profile, source)
+        .ok_or_else(|| AnalysisError::new("UNSUPPORTED_CHANGE", "source tokens unavailable"))?;
+    let mut offsets = vec![0];
+    for (i, b) in source.iter().enumerate() {
+        if *b == b'\n' {
+            offsets.push(i + 1);
+        }
+    }
+    let mut result = vec![];
+    syntax::walk(tree.root_node(), &mut |node| {
+        if tests
+            .iter()
+            .any(|r| node.start_byte() >= r.start && node.end_byte() <= r.end)
+        {
+            return;
+        }
+        let kind = node.kind();
+        let (start, end) = match kind {
+            "return_statement"
+            | "throw_statement"
+            | "raise_statement"
+            | "expression_statement"
+            | "local_variable_declaration"
+            | "lexical_declaration"
+            | "variable_declaration"
+            | "field_declaration"
+            | "public_field_definition"
+            | "import_statement"
+            | "import_declaration"
+            | "import_from_statement"
+            | "package_declaration"
+            | "break_statement"
+            | "continue_statement"
+            | "pass_statement"
+            | "delete_statement" => {
+                // Nested expressions are owned by their enclosing statement.
+                let mut p = node.parent();
+                while let Some(parent) = p {
+                    if matches!(
+                        parent.kind(),
+                        "return_statement"
+                            | "throw_statement"
+                            | "expression_statement"
+                            | "local_variable_declaration"
+                            | "lexical_declaration"
+                            | "variable_declaration"
+                            | "field_declaration"
+                    ) {
+                        return;
+                    }
+                    p = parent.parent();
+                }
+                let mut cursor = node.walk();
+                if node.named_children(&mut cursor).any(|child| {
+                    tests
+                        .iter()
+                        .any(|r| r.start == child.start_byte() && r.end == child.end_byte())
+                }) {
+                    return;
+                }
+                (node.start_byte(), node.end_byte())
+            }
+            "class_declaration"
+            | "class_definition"
+            | "method_declaration"
+            | "method_definition"
+            | "constructor_declaration"
+            | "function_definition"
+            | "function_declaration" => {
+                let Some(body) = node.child_by_field_name("body") else {
+                    return;
+                };
+                (node.start_byte(), body.start_byte())
+            }
+            "if_statement" | "for_statement" | "while_statement" | "switch_expression"
+            | "switch_statement" | "match_statement" | "else_clause" | "elif_clause" => {
+                let boundary = node
+                    .child_by_field_name("body")
+                    .or_else(|| node.child_by_field_name("consequence"))
+                    .map(|n| n.start_byte())
+                    .unwrap_or(node.end_byte());
+                (node.start_byte(), boundary)
+            }
+            _ => return,
+        };
+        let selected: Vec<_> = tokens
+            .iter()
+            .filter(|(_, row, col)| {
+                let position = offsets.get(row - 1).copied().unwrap_or(source.len()) + col;
+                position >= start && position < end
+            })
+            .collect();
+        if selected.is_empty() {
+            return;
+        }
+        let text = selected
+            .iter()
+            .map(|(t, _, _)| t.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let code = selected
+            .iter()
+            .filter(|(t, _, _)| !t.starts_with("<literal:"))
+            .map(|(t, _, _)| t.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        result.push(SourceRegion {
+            start,
+            end,
+            line: node.start_position().row + 1,
+            text,
+            code,
+            kind: kind.into(),
+        });
+    });
+    Ok(result)
+}
+
+fn evaluate_source(file: &FileChange, profile: Profile) -> Result<Vec<Finding>, AnalysisError> {
+    let old = source_regions(profile, &file.old)?;
+    let new = source_regions(profile, &file.new)?;
+    let path = String::from_utf8_lossy(file.path()).to_lowercase();
+    let auth = segments(
+        &path,
+        &["auth", "authn", "authz", "authentication", "authorization"],
+    );
+    let payment = segments(
+        &path,
+        &["payment", "payments", "billing", "invoice", "pricing"],
+    );
+    let secret = segments(&path, &["secret", "secrets", "iam"]);
+    let cache = segments(&path, &["cache", "caching", "concurrency"]);
+    let migration = segments(&path, &["migration", "migrations", "migrate"]);
+    let contract = segments(&path, &["api", "domain", "contracts"]);
+    let old_symbols = syntax::symbols(profile, &file.old).unwrap_or_default();
+    let new_symbols = syntax::symbols(profile, &file.new).unwrap_or_default();
+    let mut findings = vec![];
+    let mut changed = false;
+    for (regions, opposite, symbols, opposite_symbols, side, source) in [
+        (
+            &old,
+            &new,
+            &old_symbols,
+            &new_symbols,
+            Side::Base,
+            &file.old,
+        ),
+        (
+            &new,
+            &old,
+            &new_symbols,
+            &old_symbols,
+            Side::Target,
+            &file.new,
+        ),
+    ] {
+        let mut remaining: Vec<_> = opposite.iter().map(|r| r.text.as_str()).collect();
+        for region in regions {
+            if let Some(i) = remaining.iter().position(|s| *s == region.text) {
+                remaining.remove(i);
+                continue;
+            }
+            changed = true;
+            let enclosing = symbols
+                .iter()
+                .filter(|s| s.start <= region.start && s.end >= region.end && s.kind != "CLASS")
+                .min_by_key(|s| s.end - s.start);
+            let contextual_code = format!(
+                "{} {}",
+                region.code,
+                enclosing.map(|s| s.name.as_str()).unwrap_or_default()
+            );
+            let code = &contextual_code;
+            let mut covered = false;
+            let mut add = |condition, id, level, reason| {
+                if condition {
+                    findings.push(finding(file, id, level, reason, side, Some(region.line)));
+                    covered = true;
+                }
+            };
+            add(
+                auth || has_word(
+                    code,
+                    &[
+                        "authenticate",
+                        "authorize",
+                        "checkPermission",
+                        "hasRole",
+                        "verifyToken",
+                    ],
+                ),
+                "AUTH_CHANGE",
+                Level::High,
+                "AuthN/AuthZ change detected; security impact possible",
+            );
+            add(
+                payment
+                    || has_word(
+                        code,
+                        &[
+                            "charge",
+                            "refund",
+                            "capturePayment",
+                            "calculatePrice",
+                            "calculateInvoice",
+                        ],
+                    ),
+                "PAYMENT_CHANGE",
+                Level::High,
+                "Payment/billing change detected; financial impact possible",
+            );
+            add(
+                secret || has_word(code, &["getSecret", "putSecret", "rotateSecret"]),
+                "SECRET_IAM_PROD",
+                Level::High,
+                "Secret management changed; security impact possible",
+            );
+            add(
+                cache
+                    || has_word(
+                        code,
+                        &[
+                            "lock",
+                            "unlock",
+                            "synchronized",
+                            "Thread",
+                            "Executor",
+                            "async",
+                            "await",
+                            "cache",
+                            "invalidate",
+                            "evict",
+                        ],
+                    ),
+                "CONCURRENCY_CACHE",
+                Level::Medium,
+                "Concurrency/cache operation changed; hard-to-reproduce behavior possible",
+            );
+            add(
+                migration && has_word(code, &["drop_table", "drop_column"]),
+                "DESTRUCTIVE_MIGRATION",
+                Level::High,
+                "Destructive migration operation detected; data loss possible",
+            );
+            add(
+                has_word(
+                    code,
+                    &["execute", "executeQuery", "query", "prepareStatement"],
+                ) && has_word(&region.text, &["SELECT", "INSERT", "UPDATE", "DELETE"]),
+                "QUERY_PERFORMANCE",
+                Level::Medium,
+                "Database query operation changed; behavior or performance impact possible",
+            );
+            let header = matches!(
+                region.kind.as_str(),
+                "class_declaration"
+                    | "class_definition"
+                    | "method_declaration"
+                    | "method_definition"
+                    | "constructor_declaration"
+                    | "function_definition"
+                    | "function_declaration"
+            );
+            if contract
+                && header
+                && let Some(symbol) = symbols.iter().find(|s| s.start == region.start && s.public)
+            {
+                let exact = opposite_symbols.iter().any(|s| {
+                    s.public
+                        && s.name == symbol.name
+                        && s.container == symbol.container
+                        && s.signature == symbol.signature
+                });
+                if !exact {
+                    let existed = opposite_symbols.iter().any(|s| {
+                        s.public && s.name == symbol.name && s.container == symbol.container
+                    });
+                    add(
+                        true,
+                        if side == Side::Base || existed {
+                            "CONTRACT_BREAK"
+                        } else {
+                            "API_EXTENSION"
+                        },
+                        if side == Side::Base || existed {
+                            Level::High
+                        } else {
+                            Level::Medium
+                        },
+                        "Public API contract element added, removed or changed; review consumer compatibility",
+                    );
+                }
+            }
+            add(
+                !header
+                    && (has_word(
+                        code,
+                        &[
+                            "if", "else", "switch", "case", "match", "for", "while", "return",
+                            "throw", "raise",
+                        ],
+                    ) || code.split_whitespace().any(|t| {
+                        ["+", "-", "*", "/", "%", "==", "!=", "<", ">", "<=", ">="].contains(&t)
+                    })),
+                "BUSINESS_LOGIC",
+                Level::Medium,
+                "Business behavior change detected; edge cases may be introduced",
+            );
+            // Structural headers are supported only when their body changes are independently covered.
+            if header {
+                covered = true;
+            }
+            if !covered {
+                return Err(AnalysisError::unsupported(file.path()));
+            }
+        }
+        // Reject changed executable tokens not owned by any supported region or test scope.
+        let tests = crate::association::test_ranges(profile, source);
+        let tokens = syntax::code_tokens(profile, source).unwrap_or_default();
+        let mut offsets = vec![0];
+        for (i, b) in source.iter().enumerate() {
+            if *b == b'\n' {
+                offsets.push(i + 1);
+            }
+        }
+        for (token, row, col) in tokens {
+            if !file.lines.iter().any(|l| l.side == side && l.number == row) {
+                continue;
+            }
+            let position = offsets[row - 1] + col;
+            if regions
+                .iter()
+                .any(|r| position >= r.start && position < r.end)
+                || tests.iter().any(|r| r.contains(&position))
+                || ["{", "}", ";", ":", "export", "default"].contains(&token.as_str())
+            {
+                continue;
+            }
+            return Err(AnalysisError::unsupported(file.path()));
+        }
+    }
+    if findings.is_empty() {
+        if changed {
+            return Err(AnalysisError::unsupported(file.path()));
+        }
+        findings.push(finding(
+            file,
+            "DOC_CHANGE",
+            Level::Low,
+            "Only supported non-executable changes detected",
+            Side::Metadata,
+            None,
+        ));
+    }
+    Ok(findings)
+}
+
 fn statement_regions(profile: Profile, source: &[u8]) -> Vec<(usize, usize, String)> {
     let Ok(tree) = profile.parse(source) else {
         return vec![];
@@ -710,6 +1184,60 @@ fn sql_code(s: &str) -> String {
     }
     String::from_utf8(out).unwrap_or_default()
 }
+
+fn sql_balanced(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    let mut quote = None;
+    let mut block = false;
+    let mut line = false;
+    while i < bytes.len() {
+        let b = bytes[i];
+        let next = bytes.get(i + 1).copied();
+        if line {
+            if b == b'\n' {
+                line = false;
+            }
+            i += 1;
+            continue;
+        }
+        if block {
+            if b == b'*' && next == Some(b'/') {
+                block = false;
+                i += 2;
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+        if let Some(q) = quote {
+            if b == q {
+                if next == Some(q) {
+                    i += 2;
+                    continue;
+                }
+                quote = None;
+            }
+            i += 1;
+            continue;
+        }
+        if b == b'-' && next == Some(b'-') {
+            line = true;
+            i += 2;
+            continue;
+        }
+        if b == b'/' && next == Some(b'*') {
+            block = true;
+            i += 2;
+            continue;
+        }
+        if b == b'\'' || b == b'"' {
+            quote = Some(b);
+        }
+        i += 1;
+    }
+    quote.is_none() && !block
+}
 fn lockfile(base: &str) -> bool {
     [
         "package-lock.json",
@@ -724,6 +1252,12 @@ fn dependency_change(base: &str, old: &str, new: &str) -> Result<bool, AnalysisE
     if base == "package.json" {
         let a = structured(old, base)?;
         let b = structured(new, base)?;
+        if !a.is_object() || !b.is_object() {
+            return Err(AnalysisError::new(
+                "UNSUPPORTED_CHANGE",
+                "dependency manifest must be a mapping",
+            ));
+        }
         let keys = [
             "dependencies",
             "devDependencies",
@@ -747,7 +1281,14 @@ fn dependency_change(base: &str, old: &str, new: &str) -> Result<bool, AnalysisE
         return Ok(changed);
     }
     if base.starts_with("requirements") && base.ends_with(".txt") {
-        return Ok(true);
+        let significant = |s: &str| {
+            s.lines()
+                .map(|l| l.split('#').next().unwrap_or_default().trim())
+                .filter(|l| !l.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
+        return Ok(significant(old) != significant(new));
     }
     if [
         "pom.xml",
@@ -768,9 +1309,10 @@ fn dependency_change(base: &str, old: &str, new: &str) -> Result<bool, AnalysisE
                 if base == "pyproject.toml" {
                     if trimmed.starts_with('[') && brackets == 0 {
                         section = trimmed.to_owned();
-                        active = section.starts_with("[project.optional-dependencies")
-                            || section.starts_with("[tool.poetry.dependencies")
-                            || section.starts_with("[tool.poetry.group.");
+                        active = section == "[project.optional-dependencies]"
+                            || section == "[tool.poetry.dependencies]"
+                            || section.starts_with("[tool.poetry.group.")
+                                && section.ends_with(".dependencies]");
                     }
                     if section == "[project]" && trimmed.starts_with("dependencies") {
                         active = true;
@@ -950,4 +1492,34 @@ fn api_changes(a: &serde_json::Value, b: &serde_json::Value) -> (bool, bool) {
         );
     }
     (added, broken)
+}
+
+fn validate_api_delta(a: &serde_json::Value, b: &serde_json::Value) -> Result<(), AnalysisError> {
+    fn check(a: &serde_json::Value, b: &serde_json::Value, key: &str) -> bool {
+        if a == b {
+            return true;
+        }
+        match (a, b) {
+            (serde_json::Value::Object(a), serde_json::Value::Object(b)) => {
+                a.iter().all(|(k, v)| match b.get(k) {
+                    Some(n) => check(v, n, k),
+                    None => ["paths", "properties", "schemas"].contains(&key),
+                }) && b.iter().all(|(k, _)| {
+                    a.contains_key(k)
+                        || ["paths", "properties", "schemas"].contains(&key)
+                        || k == "required"
+                })
+            }
+            _ => key == "type" || key == "required",
+        }
+    }
+    let empty = serde_json::json!({});
+    if a == &empty || b == &empty || check(a, b, "") {
+        Ok(())
+    } else {
+        Err(AnalysisError::new(
+            "UNSUPPORTED_CHANGE",
+            "API delta contains unclassified contract changes",
+        ))
+    }
 }

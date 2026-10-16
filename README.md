@@ -18,6 +18,11 @@ business logic, API extensions, dependencies, queries, concurrency/cache, author
 destructive migrations, payments, secret/IAM/production infrastructure and contract breaks.
 The finite patterns and examples are in [rules.md](specs/002-local-risk-analysis/contracts/rules.md).
 Unknown changes fail rather than producing an optimistic LOW classification.
+Source statements and declaration headers are compared separately: an unchanged
+authorization call next to a changed return does not become a new authorization finding.
+Unknown neighboring statements are not covered by another matched rule. Conventional
+test filenames do not exempt changed production method bodies from assessment.
+OpenAPI metadata alongside a schema change and unsupported YAML aliases/tags fail explicitly.
 
 Java/JavaScript/TypeScript/Python syntax is parsed without executing repository code.
 Changed test cases must actually use a changed symbol; a matching filename is insufficient.

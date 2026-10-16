@@ -1,7 +1,118 @@
 # Status: Lokale Risikobewertung
 
 **Stand**: Dokumentenmigration am 2026-10-13, Basiscommit eb5de1e.
-**Status**: Teilweise implementiert; noch nicht konvergiert.
+**Status**: Kernumfang 002 implementiert und lokal validiert; alle 25 Aufgaben abgeschlossen.
+
+## Abschluss der verbleibenden Aufgaben T011–T025
+
+Quellcodebewertung von der bisherigen Zeilenheuristik auf unabhängig verglichene
+Anweisungs-/Deklarationsbereiche umgestellt. Erhalten bleiben die 14 fest vereinbarten
+Signale und konservative unsupported-Behandlung. Wesentliche Korrekturen:
+- Unveränderter Auth-Aufruf neben verändertem Return erzeugt keinen neuen Auth-Befund.
+- Unbekannte Nachbaranweisung bleibt unsupported, auch neben einem HIGH-Signal oder
+  einer Vertragsänderung. Deklarationshüllen erlauben keine unbewerteten Methodenrümpfe.
+- Testpfad/-dateiname verdeckt keinen geänderten Produktionsrumpf oder Klassenfeld.
+- Kritische Quellpfade verlangen lesbare Syntax; Kommentare/Strings allein lösen keine
+  produktive Operation aus. Literalinterpolation bleibt Code. Identifierbestandteile
+  werden nach CamelCase/underscore abgegrenzt.
+- Manifest-Unterbereiche, mehrere CSS-Regeln und mehrzeilige SQL-Statements sind
+  voneinander abgegrenzt; unbekannte Metadaten/Operationen werden nicht mitbewertet.
+- OpenAPI-Erweiterung verdeckt keine unabhängige info-/Metadatenänderung; required-
+  Erweiterungen/Signaturentfernung führen zu Vertragsbruchindizien. JSON/YAML-Duplikate,
+  Tags/Aliase/Referenzen und komplexe Schemas bleiben ausdrücklich unsupported.
+- Ausgabeformat, BASE/TARGET/METADATA-Fundstellen, escaping, stabile Reihenfolge und
+  vollständige Deduplizierung besitzen zusätzliche Kernvertragstests.
+
+## Finale lokale Nachweise
+
+- Rust/Cargo 1.99.0, macOS arm64, Git 2.54.0.
+- 20 Unit-Tests, 12 Git-Integrationstests, 8 CLI-Tests und 22 Regeltests erfolgreich;
+  zusätzlich 20 bestehende Zuordnungstests als Kompatibilitätsprüfung erfolgreich.
+- Alle 14 Signale haben positive/negative Referenzen (26 Datenfälle plus Renamepaar).
+  Positive Referenzen zehnmal identisch; CLI-E2E zehnmal byteidentisch.
+- Fehler-/Helfer-/Objekt-/SHA-256-/Dirty-Index-/Blob-/Datei-/Zeilen-/Deadlinefälle aus
+  T004–T009 plus neue Regions-/Formatfälle vollständig für den vereinbarten Kernumfang.
+- 100 Dateien, 10.000 geänderte Zeilen: 6.98s real / 7.01s Wandzeit im Debug-E2E,
+  max RSS 5.079.040 Bytes; interner <=5s-Wunsch verfehlt, <=256 MiB deutlich eingehalten.
+  Dies ist kein zusätzliches Produkt-Akzeptanzkriterium. Keine Performancegarantie.
+- Formatprüfung/Clippy und IDE-Build werden im Abschluss geprüft; Ergebnis siehe
+  nachfolgende Abschlussnotiz. Kein Release-/Dockerlauf, kein Commit oder Push.
+
+**Abschlussnotiz**: cargo fmt --check, Clippy -D warnings, git diff --check und
+IDE-Build erfolgreich. Alle T001–T025 sind im dokumentierten Kernumfang abgeschlossen.
+
+## FR-/SC-Abgleich
+
+| Kriterium | Nachweis |
+| --- | --- |
+| FR-001 / SC-001 | Lokaler Zwei-Revisions-/Unterverzeichnis-/SHA-256- und CLI-E2E |
+| FR-002 / SC-005 | Read-only HEAD/Index/Worktree, no-helper, missing-object/no-fetch; Prozess-/Budgettests |
+| FR-003 | LOW/MEDIUM/HIGH max-Level und leerer Vergleich |
+| FR-004 / SC-003/004 | Fundstellen-/Format-/Deduplizierungs- und zehn Wiederholungsprüfungen |
+| FR-005 / SC-002 | 14 positive/negative Referenzpaare |
+| FR-006 | Endliche Regionen/Identifier, Kommentare/Literale und konservative Grenzen |
+| FR-007 | Exit 0/1/2, stdout bei Fehler leer, statische stderr-Ausgabe |
+| FR-008 | Unknown-neben-HIGH, unbekannte Nachbaroperation, API-/Manifestmetadaten |
+| FR-009 | README/quickstart/Regelvertrag und Redaktions-/Secretprüfungen |
+| FR-010 | Mixed-Scopes, Tests-only und unverändertes Risk; 003-Kompatibilität |
+
+002-Abschluss ist keine vollständige Typ-/Semantik-/Coverageprüfung. Dokumentierte
+endliche Muster begrenzen die Aussage; nicht bewertbare Eingaben sind erfolgreiche
+Fehlerbehandlung. Offene Feature-003-Matrix und Vierziel-Auslieferung 004 bleiben separat.
+
+## T009 abgeschlossen: Basisnachweise abgeglichen
+
+Die Nachweise aus T004–T007 zusammengeführt, ohne bereits erfolgreiche Prüfungen
+erneut vollständig auszuführen. Drei bisher fehlende Fälle ergänzt und erfolgreich geprüft:
+- Echtes SHA-256-Repository: 64-stellige Commit-/Blob-OIDs, identische Ergebnisse vom
+  Repositoryroot und aus einem verschachtelten Unterverzeichnis. Staged und unstaged
+  Inhalte gelangen nicht in den Commitvergleich. HEAD, Indexbytes und Worktreeinhalt
+  sind vor/nach beiden Analysen identisch.
+- CLI mit leerem PATH, Git <2.49, ungültiger Versionsausgabe oder nicht ausführbarem Git:
+  Exit 1, stdout leer, GIT_UNAVAILABLE als verständlicher Fehler.
+- CLI außerhalb Repository: Exit 2/stdout leer. help/version erfolgreich ohne Git oder
+  Repository, stderr leer.
+
+Basisabdeckung und Herkunft der Nachweise:
+
+| Vertrag | Nachweis |
+| --- | --- |
+| Root, SHA-1/SHA-256, valide Einzelrevisionen | T004-Modelltests und neuer SHA-256-Unterverzeichnistest |
+| Addition/Löschung/Rename/fehlende Dateiseiten | tests/git.rs; nach T004/T005 erfolgreich |
+| Raw-NUL-/Batch-Framing, ungültige Pfade/OIDs | T005-Raw-Regression und Batch-Unit-Test |
+| Nicht-UTF-8-/Kontrollzeichenpfade | Synthetisches Raw-/Escape- und echtes Rename-Pfadbeispiel |
+| Fehlende Objekte, Gitlinks/Symlinks/LFS/Mode/Binärdateien | Vorhandene Git-Integrationstests aus T005/T006 |
+| Keine Mutation/Helferausführung | Git-Dirty-Worktree-/Helferproben, zusätzlich Index-/HEAD-Snapshot |
+| Timeout/Pipe-/Outputfehler und Cleanup | Kontrollierte Prozessgruppe-/Pipe-Tests aus T005 |
+| Blob-/Gesamtbyte-/Datei-/Zeilenlimits, Delta-Deadline | Zähler-/Delta-/Mehrdateitests aus T006 |
+| Syntaxfehler/Literale/Kommentare/Layout | Fünf Syntax- und Regelprüfungen aus T007 |
+| CLI-Exitklassen, keine Teil-/Geheimnisausgabe | T005-CLI-Prozessfehler und neue Verfügbarkeitsfälle |
+
+Clippy mit -D warnings erfolgreich. Es wurden nur die drei neuen Basisfälle ausgeführt,
+keine vollständige neue Suite/Release-/Docker-/003-Matrix. Anwendungscode blieb bei T009
+unverändert; Testnachweise ergänzen den Basisabgleich.
+
+Damit ist Phase 2 von 002 abgeschlossen. Nächste offene Aufgabe: T011, Kernformat-/
+Fundstellen-/Deduplizierungsnachweise für US1; anschließend T013–T019-Regelrestarbeiten.
+
+## T007 abgeschlossen: Neutralitäts-/Kontextabgrenzung
+
+- UTF-8-Prüfung vor Parsing; Syntaxfehler/fehlende Tokens und Java-Unicode-Escapes
+  liefern keine positive Neutralitätsbewertung. Parser-Tiefengrenze bleibt erhalten.
+- Kommentare werden ausgeblendet; Strings/Docstrings/Regex-Literale behalten für den
+  Neutralitätsvergleich ihren Inhalt, erzeugen aber keine ausführbaren Keyword-Tokens.
+- JavaScript-/TypeScript-Template- und Python-f-String-Interpolationen werden zusätzlich
+  als Code tokenisiert, auch verschachtelt ohne doppelte Erfassung. Ein Auth-Aufruf
+  innerhalb einer Interpolation kann nicht mehr als bloßer Literaltext verschwinden.
+- Python-Tokenpositionen erhalten Einrückung/Zeilengrenzen; JS/TS erhalten relevante
+  Zeilenpositionen. Der Ansatz ist bewusst konservativ: nicht jede tatsächlich neutrale
+  Formatänderung wird als LOW erkannt. Java-Leerraum bei gleichen Tokens bleibt neutral.
+
+Nachweise: 5 Syntax-Unit-Tests mit vierprofiligen Kommentar-/Literal-/Layout-/Fehlerfällen,
+14 Regeltests einschließlich neuer interpolierter Auth-Aufrufe erfolgreich. Clippy mit
+-D warnings und IDE-Build erfolgreich. Kein Release-/Docker-/anderer Featureabschluss.
+
+Nächste offene Basisaufgabe T009: vollständiger Basisabgleich; danach US1-Regelaufgaben.
 
 ## T004 nachgeholt und abgeschlossen
 

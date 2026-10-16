@@ -1,5 +1,202 @@
 use risk_analyzer::{git::diff_lines, model::FileChange};
 
+#[test]
+fn independent_source_regions_do_not_inherit_a_neighbor_signal() {
+    let cases = [
+        (
+            "src/A.java",
+            "class A { int m() { authorize(user); return 1; } }",
+            "class A { int m() { authorize(user); return 2; } }",
+        ),
+        (
+            "src/A.java",
+            "class A { int m() { return 1; } }",
+            "class A { int m() { authorize(user); customSideEffect(); return 2; } }",
+        ),
+        (
+            "api/A.java",
+            "class A { public int m() { return 1; } }",
+            "class A { public int m(int x) { customSideEffect(); return 1; } }",
+        ),
+    ];
+    let findings =
+        risk_analyzer::rules::evaluate(&[change(cases[0].0, cases[0].1, cases[0].2)]).unwrap();
+    assert!(
+        !findings.iter().any(|f| f.rule == "AUTH_CHANGE"),
+        "unchanged call must not trigger: {findings:?}"
+    );
+    for (path, old, new) in &cases[1..] {
+        assert!(
+            risk_analyzer::rules::evaluate(&[change(path, old, new)]).is_err(),
+            "unknown neighboring statement accepted"
+        );
+    }
+}
+
+#[test]
+fn mixed_test_filenames_and_source_constants_do_not_hide_production_changes() {
+    let file = change(
+        "tests/MixedTest.java",
+        "class MixedTest { int compute() { return 1; } }",
+        "class MixedTest { int compute() { authorize(user); return 2; } }",
+    );
+    let findings = risk_analyzer::rules::evaluate(&[file]).unwrap();
+    assert!(findings.iter().any(|f| f.rule == "AUTH_CHANGE"));
+    assert!(
+        risk_analyzer::rules::evaluate(&[change(
+            "src/A.java",
+            "class A { String x = \"a\"; int m() { return 1; } }",
+            "class A { String x = \"unknown\"; int m() { return 2; } }"
+        )])
+        .is_err()
+    );
+}
+
+#[test]
+fn critical_source_path_comments_and_literals_still_require_readable_source() {
+    for (path, old, new) in [
+        (
+            "src/secrets/A.java",
+            "class A {} // old",
+            "class A {} // new",
+        ),
+        (
+            "src/auth/A.java",
+            "class A { int m() { return 1; } }",
+            "class A { int m() { return 2; } }",
+        ),
+    ] {
+        assert!(risk_analyzer::rules::evaluate(&[change(path, old, new)]).is_ok());
+    }
+    assert!(
+        risk_analyzer::rules::evaluate(&[change(
+            "src/secrets/A.java",
+            "class A {}",
+            "not valid java !!!"
+        )])
+        .is_err()
+    );
+}
+
+#[test]
+fn yaml_contracts_reject_duplicates_aliases_and_complex_schemas() {
+    for new in [
+        "paths: {}\npaths: {}\n",
+        "paths: &x {}\ncomponents: *x\n",
+        "components:\n  schemas:\n    A:\n      allOf: []\n",
+        "paths: !custom {}\n",
+    ] {
+        assert!(
+            risk_analyzer::rules::evaluate(&[change("openapi.yaml", "paths: {}\n", new)]).is_err()
+        );
+    }
+    let old =
+        "components:\n  schemas:\n    A:\n      properties:\n        id:\n          type: string\n";
+    let new = format!("{old}        name:\n          type: string\n");
+    assert!(
+        risk_analyzer::rules::evaluate(&[change("openapi.yaml", old, &new)])
+            .unwrap()
+            .iter()
+            .any(|f| f.rule == "API_EXTENSION")
+    );
+}
+
+#[test]
+fn api_extension_does_not_cover_independent_metadata_changes() {
+    let old = r#"{"info":{"title":"old"},"paths":{}}"#;
+    let new = r#"{"info":{"title":"new"},"paths":{"/users":{}}}"#;
+    assert!(risk_analyzer::rules::evaluate(&[change("openapi.json", old, new)]).is_err());
+}
+
+#[test]
+fn identifier_components_and_test_class_fields_have_bounded_classification() {
+    let findings = risk_analyzer::rules::evaluate(&[change(
+        "src/A.java",
+        "class A { void m() { user_cache.invalidate(a); } }",
+        "class A { void m() { user_cache.invalidate(b); } }",
+    )])
+    .unwrap();
+    assert!(findings.iter().any(|f| f.rule == "CONCURRENCY_CACHE"));
+    assert!(
+        risk_analyzer::rules::evaluate(&[change(
+            "tests/A.java",
+            "class A { String secret = \"old\"; }",
+            "class A { String secret = \"new\"; }"
+        )])
+        .is_err()
+    );
+}
+
+#[test]
+fn manifest_and_style_neighbor_changes_are_not_covered_by_a_valid_signal() {
+    for (path, old, new) in [
+        (
+            "package.json",
+            r#"{"description":"a","dependencies":{"x":"1"}}"#,
+            r#"{"description":"b","dependencies":{"x":"2"}}"#,
+        ),
+        (
+            "build.gradle",
+            "plugins { id 'java' }\ndependencies { implementation 'x:1' }\n",
+            "plugins { id 'other' }\ndependencies { implementation 'x:2' }\n",
+        ),
+        (
+            "style.css",
+            ".a { color: red; display: block; }",
+            ".a { color: blue; display: none; }",
+        ),
+        ("migrations/a.sql", "", "DROP TABLE users; UNKNOWN_OP;"),
+        ("migrations/a.sql", "", "SELECT 'unterminated;"),
+    ] {
+        assert!(
+            risk_analyzer::rules::evaluate(&[change(path, old, new)]).is_err(),
+            "{path}"
+        );
+    }
+}
+
+#[test]
+fn all_reference_pairs_remain_deterministic_and_have_expected_rationale() {
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("fixtures/rules/signals.json")).unwrap();
+    for c in cases.iter().filter(|c| c["positive"] == true) {
+        let file = change(
+            c["path"].as_str().unwrap(),
+            c["old"].as_str().unwrap(),
+            c["new"].as_str().unwrap(),
+        );
+        let expected = risk_analyzer::rules::evaluate(std::slice::from_ref(&file)).unwrap();
+        for _ in 0..10 {
+            assert_eq!(
+                risk_analyzer::rules::evaluate(std::slice::from_ref(&file)).unwrap(),
+                expected
+            );
+        }
+        assert!(expected.iter().all(|f| !f.reason.is_empty()
+            && !f.path.is_empty()
+            && (f.side == risk_analyzer::model::Side::Metadata || f.line.is_some())));
+    }
+}
+
+#[test]
+fn interpolated_authorization_call_is_not_hidden_as_literal_text() {
+    for (path, old, new) in [
+        ("src/a.js", "", "const x = `value ${authorize(user)}`;"),
+        (
+            "src/a.ts",
+            "",
+            "const x: string = `value ${authorize(user)}`;",
+        ),
+        ("src/a.py", "", "x = f'value {authorize(user)}'\n"),
+    ] {
+        let findings = risk_analyzer::rules::evaluate(&[change(path, old, new)]).unwrap();
+        assert!(
+            findings.iter().any(|f| f.rule == "AUTH_CHANGE"),
+            "{path}: {findings:?}"
+        );
+    }
+}
+
 pub fn change(path: &str, old: &str, new: &str) -> FileChange {
     FileChange {
         old_path: Some(path.as_bytes().to_vec()),

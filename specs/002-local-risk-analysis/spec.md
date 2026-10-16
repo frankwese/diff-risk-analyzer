@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-13
 
-**Status**: Spec geprüft; Implementierung teilweise vorhanden, nicht konvergiert
+**Status**: Kernumfang implementiert und lokal validiert; Abschlussnachweise in status.md
 
 **Input**: Bestehenden Git Diff Risk Analyzer in unabhängig abschließbare Features teilen.
 Dieses Feature besitzt den lokalen Revisionsvergleich, 14 Risikosignale, begründete

@@ -1,7 +1,7 @@
 # Kernanalyse: Validierung und Aufruf
 
-Rust/Cargo 1.99.0 und C-Compiler beim Build, Git >=2.49 zur Analyse. Vorhandene Anwendung
-und historische Prüfungen übernehmen; keine neuen Tests durch Dokumentenmigration.
+Rust/Cargo 1.99.0 und C-Compiler beim Build, Git >=2.49 zur Analyse.
+Kernumfang 002 lokal abgeschlossen; aktuelle Nachweise und Grenzen in status.md.
 
 ```sh
 cargo test --locked --test rules --test git --test cli
@@ -17,3 +17,7 @@ Fixtures nur temporäre Repositorys, keine Projektcommits zu Testzwecken.
 Abschluss 002: eigene Referenz-/Fehler-/Read-only-/Limitkriterien nachweisen. 003-/004-
 Restarbeit nicht als Kern-Gate behandeln, bereits integrierte Erweiterung nicht beschädigen.
 Fortschritt [status.md](status.md), Aufgaben [tasks.md](tasks.md).
+
+Die Analyse kann unsupported liefern, wenn eine Anweisung außerhalb des festen
+Regelkatalogs liegt. Ein unbekannter Funktionsaufruf wird nicht automatisch MEDIUM.
+Keine Garantie semantischer Neutralität oder allgemeiner Vertragskompatibilität.

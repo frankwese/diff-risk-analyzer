@@ -1,6 +1,65 @@
 use std::process::Command;
 
 #[test]
+fn auth_context_cli_regressions_are_stable_for_rule_version_110() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let git = |args: &[&str]| {
+        assert!(
+            Command::new("git")
+                .arg("-C")
+                .arg(root)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        )
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.name", "Fixture"]);
+    git(&["config", "user.email", "fixture@example.invalid"]);
+    let old = "class Access { boolean secure() { authorize(user); return false; } int other() { return 1; } }";
+    std::fs::write(root.join("Access.java"), old).unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-qm", "base"]);
+    for (new, context) in [
+        (old.replace("return false", "return true"), true),
+        (format!("{old} // comment"), false),
+        (old.replace("return 1", "return 2"), false),
+    ] {
+        std::fs::write(root.join("Access.java"), new).unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-qm", "target"]);
+        let run = || {
+            Command::new(env!("CARGO_BIN_EXE_risk-analyzer"))
+                .current_dir(root)
+                .arg("HEAD~1..HEAD")
+                .output()
+                .unwrap()
+        };
+        let output = run();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8_lossy(&output.stdout);
+        assert!(text.contains("Rules: 1.1.0"));
+        assert_eq!(text.contains("AUTH_CONTEXT_CHANGE"), context);
+        if context {
+            assert!(text.starts_with("Risk: HIGH"));
+            assert!(!text.contains("[AUTH_CHANGE]"));
+        }
+        for _ in 0..10 {
+            let repeated = run();
+            assert!(repeated.status.success());
+            assert_eq!(repeated.stdout, output.stdout);
+        }
+        git(&["reset", "--hard", "HEAD~1"]);
+    }
+}
+
+#[test]
 fn core_findings_preserve_order_sides_locations_and_deduplication() {
     use risk_analyzer::{git::diff_lines, model::FileChange};
     let make = |path: &str, old: &str, new: &str| FileChange {

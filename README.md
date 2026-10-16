@@ -18,6 +18,9 @@ business logic, API extensions, dependencies, queries, concurrency/cache, author
 destructive migrations, payments, secret/IAM/production infrastructure and contract breaks.
 The finite patterns and examples are in [rules.md](specs/002-local-risk-analysis/contracts/rules.md).
 Unknown changes fail rather than producing an optimistic LOW classification.
+Infrastructure comparisons preserve string values, including IAM policy fields and
+production image/resource settings. Maven XML and Python TOML manifests are parsed to
+keep dependency changes separate from unrelated metadata; Gradle blocks must be balanced.
 Source statements and declaration headers are compared separately: an unchanged
 authorization call is not reported as directly modified. Executable changes in the
 same function containing an authorization check produce a separate HIGH
@@ -39,6 +42,8 @@ Exit 0 means successful analysis (including HIGH). Exit 2 means invalid invocati
 exit 1 means processing/unsupported input. Errors have empty stdout and messages on stderr.
 Limits: 1,000 files, 2 MiB/blob, 32 MiB total blobs, 100,000 changed lines, 60 seconds.
 No checkout, fetch, external diff, textconv, hooks or application test execution.
+The CLI supervises analysis in a dedicated process group. The overall deadline stops
+the analysis process and its Git children, rather than merely abandoning a worker thread.
 
 ## Development
 

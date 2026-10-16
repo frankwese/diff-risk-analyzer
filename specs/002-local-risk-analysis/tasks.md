@@ -80,5 +80,22 @@ US1-Kernnutzen vor vollständiger Testzuordnung abnehmen; alle Kernfehler bleibe
 
 MVP zuerst 002 abschließen. 003 kann danach eigene Funktionsmatrix abschließen;
 004 baut aktuelles Release am Funktionsmeilenstein. Keine Tests/Docker bei Dokumentenmigration.
-25/25 Aufgaben abgeschlossen. Aktuelle Umsetzung, FR-/SC-Matrix, Prüfungen und
+T001–T026 waren vor dieser Konvergenzrunde abgeschlossen. Aktuelle Umsetzung, FR-/SC-Matrix, Prüfungen und
 konservativer endlicher Regelumfang stehen in status.md. Keine Freigabe von 003/004.
+
+## Phase 6: Convergence
+
+Konvergenzprüfung: bestehende Erledigtmarker unverändert; sechs verbleibende Lücken.
+Die folgenden Aufgaben korrigieren den aktuellen Code, ohne den vereinbarten Umfang
+durch schwächere Anforderungen oder geänderte Abschlusskriterien zu ersetzen.
+
+- [X] T027 [US1] CRITICAL: Ersetze den Infrastruktur-Neutralitätsvergleich über `sql_code()` in `src/rules.rs` durch formatgerechte Vergleiche, die Stringwerte erhalten; ergänze in `tests/rules.rs` Regressionen für geänderte IAM Action/Resource/Effect/Principal-Werte und produktive Infrastrukturwerte sowie reine Kommentare. Änderungen dürfen nicht durch das Entfernen von Literalen LOW werden; Geheimniswerte weiterhin nicht ausgeben, per Constitution IV, FR-005/FR-008 und T016 (contradicts; F1).
+- [X] T028 [US1] Begrenze den Alt-/Neu-Abgleich von SourceRegion in `src/rules.rs` auf die zugehörige Funktion/Klasse und passende Deklaration statt dateiweitem Text-Multiset; ergänze in `tests/rules.rs` getauschte identische Returns und verschobene Anweisungen zwischen Auth-/Nicht-Auth-Funktionen. Funktionswechsel darf weder Änderungen noch Auth-Kontext als unverändert ausblenden, per FR-006/FR-008/FR-011 und T018/T026 (contradicts; F2).
+- [X] T029 [US1] Vervollständige die bestätigte Auth-Kontextregel in `src/rules.rs`: erkennbare nicht neutrale Logik-/Vertragsänderungen innerhalb derselben Auth-Funktion müssen den HIGH-Kontextbefund erhalten, auch wenn kein anderes Signal die Änderung abdeckt; unabhängige Änderungen außerhalb dieser Funktion bleiben unsupported. Prüfe tatsächliche Prüfaufrufe gegenüber bloßen Identifiern, Kommentaren, Strings und verschachtelten Funktionen in `tests/rules.rs`, per FR-011/SC-006 und T026 (partial; F3).
+- [X] T030 [US1] Vervollständige begrenzte Manifest-/API-Vertragsabgrenzung in `src/rules.rs`, `src/structured.rs` und `src/syntax.rs`: Dependency-Textmarker dürfen unbekannte Nachbarfelder oder unvollständige Blöcke nicht verdecken; öffentliche Deklarationen ohne Methodenkörper dürfen bei API-Erweiterung/Vertragsbruch nicht übersprungen werden. Ergänze in `tests/rules.rs` einzeilige Maven-Blöcke mit Metadatenänderung, fehlende Blockabschlüsse und geänderte/entfernte deklarierte öffentliche Signaturen; nicht unterstützte Formen ausdrücklich ablehnen, per FR-005/FR-008 und T015/T017 (partial; F4).
+- [X] T031 [US2] Stelle beim gesamten CLI-Timeout eine koordinierte Abbruch-/Cleanup-Grenze für Worker und laufende Git-Prozesse in `src/cli.rs`, `src/git.rs` und `src/model.rs` her; ein beendetes Warten darf keinen weiterlaufenden Analyseworker oder Git-Prozess hinterlassen. Ergänze kurze kontrollierte Gesamtdeadlinefälle in `tests/cli.rs` beziehungsweise Unit-Tests mit Exit 1, leerem stdout und belegtem Cleanup, per FR-007/SC-005, plan: 60s Gesamtlaufzeit und T023 (partial; F5).
+- [X] T032 Ergänze nach den Korrekturen CLI-End-to-End- und zehnfache Reproduzierbarkeitsnachweise für AUTH_CONTEXT_CHANGE im Regelstand 1.1.0 in `tests/cli.rs`; prüfe geänderten Return mit unveränderter Prüfung, Kommentaränderung und Änderung einer anderen Funktion. Aktualisiere danach die tatsächlichen Prüf-/Abschlussangaben in `status.md`, `quickstart.md` und `README.md`, einschließlich vollständiger Aufgabenzahl und noch offener Konvergenzaufgaben; keine alte Teilprüfung als aktuellen Gesamtabschluss ausgeben, per SC-003/SC-006 und T025/T026 (partial; F6).
+
+Abhängigkeiten: T027 zuerst; T028 vor T029. T030 und T031 können in getrennten
+Arbeitsschritten umgesetzt werden, gemeinsame Module nicht gleichzeitig verändern.
+T032 folgt allen Codekorrekturen. Danach erneut `/speckit.converge` für Feature 002.

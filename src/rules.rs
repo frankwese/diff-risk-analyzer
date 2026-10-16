@@ -311,7 +311,13 @@ fn evaluate_file(file: &FileChange) -> Result<Vec<Finding>, AnalysisError> {
             structured(old, base)?;
             structured(new, base)?;
         }
-        if old == new || sql_code(old) == sql_code(new) {
+        let neutral =
+            if base.ends_with(".json") || base.ends_with(".yaml") || base.ends_with(".yml") {
+                structured(old, base)? == structured(new, base)?
+            } else {
+                infrastructure_code(old)? == infrastructure_code(new)?
+            };
+        if neutral {
             return Ok(vec![finding(
                 file,
                 "DOC_CHANGE",
@@ -707,6 +713,7 @@ struct SourceRegion {
     text: String,
     code: String,
     kind: String,
+    owner: String,
 }
 
 fn source_regions(profile: Profile, source: &[u8]) -> Result<Vec<SourceRegion>, AnalysisError> {
@@ -780,17 +787,18 @@ fn source_regions(profile: Profile, source: &[u8]) -> Result<Vec<SourceRegion>, 
                 (node.start_byte(), node.end_byte())
             }
             "class_declaration"
+            | "interface_declaration"
             | "class_definition"
             | "method_declaration"
             | "method_definition"
             | "constructor_declaration"
             | "function_definition"
-            | "function_declaration" => {
-                let Some(body) = node.child_by_field_name("body") else {
-                    return;
-                };
-                (node.start_byte(), body.start_byte())
-            }
+            | "function_declaration" => (
+                node.start_byte(),
+                node.child_by_field_name("body")
+                    .map(|b| b.start_byte())
+                    .unwrap_or(node.end_byte()),
+            ),
             "if_statement" | "for_statement" | "while_statement" | "switch_expression"
             | "switch_statement" | "match_statement" | "else_clause" | "elif_clause" => {
                 let boundary = node
@@ -830,6 +838,28 @@ fn source_regions(profile: Profile, source: &[u8]) -> Result<Vec<SourceRegion>, 
             text,
             code,
             kind: kind.into(),
+            owner: {
+                let mut parts = vec![];
+                let mut parent = Some(node);
+                while let Some(p) = parent {
+                    if matches!(
+                        p.kind(),
+                        "class_declaration"
+                            | "class_definition"
+                            | "method_declaration"
+                            | "method_definition"
+                            | "function_definition"
+                            | "function_declaration"
+                            | "constructor_declaration"
+                    ) && let Some(name) = p.child_by_field_name("name")
+                    {
+                        parts.push(format!("{}:{}", p.kind(), syntax::text(name, source)));
+                    }
+                    parent = p.parent();
+                }
+                parts.reverse();
+                parts.join("/")
+            },
         });
     });
     Ok(result)
@@ -873,9 +903,15 @@ fn evaluate_source(file: &FileChange, profile: Profile) -> Result<Vec<Finding>, 
             &file.new,
         ),
     ] {
-        let mut remaining: Vec<_> = opposite.iter().map(|r| r.text.as_str()).collect();
+        let mut remaining: Vec<_> = opposite
+            .iter()
+            .map(|r| (r.owner.as_str(), r.text.as_str()))
+            .collect();
         for region in regions {
-            if let Some(i) = remaining.iter().position(|s| *s == region.text) {
+            if let Some(i) = remaining
+                .iter()
+                .position(|(owner, text)| *owner == region.owner && *text == region.text)
+            {
                 remaining.remove(i);
                 continue;
             }
@@ -992,6 +1028,7 @@ fn evaluate_source(file: &FileChange, profile: Profile) -> Result<Vec<Finding>, 
             let header = matches!(
                 region.kind.as_str(),
                 "class_declaration"
+                    | "interface_declaration"
                     | "class_definition"
                     | "method_declaration"
                     | "method_definition"
@@ -1048,6 +1085,9 @@ fn evaluate_source(file: &FileChange, profile: Profile) -> Result<Vec<Finding>, 
             if header {
                 covered = true;
             }
+            if auth_context {
+                covered = true;
+            }
             if !covered {
                 return Err(AnalysisError::unsupported(file.path()));
             }
@@ -1096,6 +1136,78 @@ fn evaluate_source(file: &FileChange, profile: Profile) -> Result<Vec<Finding>, 
         ));
     }
     Ok(findings)
+}
+
+fn infrastructure_code(source: &str) -> Result<Vec<String>, AnalysisError> {
+    let error = || {
+        AnalysisError::new(
+            "UNSUPPORTED_CHANGE",
+            "invalid infrastructure comment or literal",
+        )
+    };
+    let mut chars = source.chars().peekable();
+    let mut tokens = vec![];
+    let mut word = String::new();
+    while let Some(c) = chars.next() {
+        if c == '"' {
+            if !word.is_empty() {
+                tokens.push(std::mem::take(&mut word));
+            }
+            let mut literal = String::from("\"");
+            let mut closed = false;
+            while let Some(n) = chars.next() {
+                literal.push(n);
+                if n == '\\' {
+                    literal.push(chars.next().ok_or_else(error)?);
+                } else if n == '"' {
+                    closed = true;
+                    break;
+                }
+            }
+            if !closed {
+                return Err(error());
+            }
+            tokens.push(literal);
+        } else if c == '#' || c == '/' && chars.peek() == Some(&'/') {
+            if !word.is_empty() {
+                tokens.push(std::mem::take(&mut word));
+            }
+            for n in chars.by_ref() {
+                if n == '\n' {
+                    break;
+                }
+            }
+        } else if c == '/' && chars.peek() == Some(&'*') {
+            chars.next();
+            if !word.is_empty() {
+                tokens.push(std::mem::take(&mut word));
+            }
+            let mut closed = false;
+            while let Some(n) = chars.next() {
+                if n == '*' && chars.peek() == Some(&'/') {
+                    chars.next();
+                    closed = true;
+                    break;
+                }
+            }
+            if !closed {
+                return Err(error());
+            }
+        } else if c.is_whitespace() || "{}[]=(),".contains(c) {
+            if !word.is_empty() {
+                tokens.push(std::mem::take(&mut word));
+            }
+            if !c.is_whitespace() {
+                tokens.push(c.to_string());
+            }
+        } else {
+            word.push(c);
+        }
+    }
+    if !word.is_empty() {
+        tokens.push(word);
+    }
+    Ok(tokens)
 }
 
 fn auth_function(profile: Profile, source: &[u8], symbol: &syntax::Symbol) -> bool {
@@ -1383,6 +1495,17 @@ fn dependency_change(base: &str, old: &str, new: &str) -> Result<bool, AnalysisE
     ]
     .contains(&base)
     {
+        if base == "pom.xml" {
+            return maven_dependencies(old, new);
+        }
+        if base == "pyproject.toml" {
+            return toml_dependencies(old, new);
+        }
+        if base.starts_with("build.gradle") {
+            for source in [old, new] {
+                validate_gradle_blocks(source)?;
+            }
+        }
         fn split(base: &str, text: &str) -> (Vec<String>, Vec<String>) {
             let mut dependency = vec![];
             let mut other = vec![];
@@ -1443,6 +1566,138 @@ fn dependency_change(base: &str, old: &str, new: &str) -> Result<bool, AnalysisE
         return Ok(a != b);
     }
     Ok(false)
+}
+
+fn maven_dependencies(old: &str, new: &str) -> Result<bool, AnalysisError> {
+    fn split(source: &str) -> Result<(Vec<String>, String), AnalysisError> {
+        let error = || AnalysisError::new("UNSUPPORTED_CHANGE", "invalid or unsupported Maven XML");
+        if source.trim().is_empty() {
+            return Ok((vec![], String::new()));
+        }
+        let mut reader = quick_xml::Reader::from_str(source);
+        let mut stack = vec![];
+        let mut start = None;
+        let mut ranges = vec![];
+        loop {
+            let before = reader.buffer_position() as usize;
+            match reader.read_event().map_err(|_| error())? {
+                quick_xml::events::Event::Start(e) => {
+                    let name = e.name().as_ref().to_vec();
+                    if name == b"dependencies" && start.is_none() {
+                        start = Some(before);
+                    }
+                    stack.push(name);
+                }
+                quick_xml::events::Event::End(e) => {
+                    if stack.pop().as_deref() != Some(e.name().as_ref()) {
+                        return Err(error());
+                    }
+                    if e.name().as_ref() == b"dependencies"
+                        && let Some(start) = start.take()
+                    {
+                        ranges.push(start..reader.buffer_position() as usize);
+                    }
+                }
+                quick_xml::events::Event::DocType(_) => return Err(error()),
+                quick_xml::events::Event::Eof => break,
+                _ => {}
+            }
+        }
+        if !stack.is_empty() {
+            return Err(error());
+        }
+        let mut rest = String::new();
+        let mut dependencies = vec![];
+        let mut cursor = 0;
+        for range in ranges {
+            rest.push_str(source[cursor..range.start].trim());
+            dependencies.push(source[range.clone()].to_owned());
+            cursor = range.end;
+        }
+        rest.push_str(source[cursor..].trim());
+        Ok((dependencies, rest))
+    }
+    let (a, ao) = split(old)?;
+    let (b, bo) = split(new)?;
+    if a != b && ao != bo {
+        return Err(AnalysisError::new(
+            "UNSUPPORTED_CHANGE",
+            "Maven delta includes non-dependency metadata",
+        ));
+    }
+    Ok(a != b)
+}
+
+fn toml_dependencies(old: &str, new: &str) -> Result<bool, AnalysisError> {
+    fn split(source: &str) -> Result<(Vec<toml::Value>, toml::Value), AnalysisError> {
+        let mut value = if source.trim().is_empty() {
+            toml::Value::Table(Default::default())
+        } else {
+            toml::from_str::<toml::Value>(source)
+                .map_err(|_| AnalysisError::new("UNSUPPORTED_CHANGE", "invalid TOML manifest"))?
+        };
+        let mut deps = vec![];
+        if let Some(project) = value.get_mut("project").and_then(|v| v.as_table_mut()) {
+            for key in ["dependencies", "optional-dependencies"] {
+                if let Some(v) = project.get(key).cloned() {
+                    deps.push(v);
+                    project.insert(key.into(), toml::Value::String("<dependency-area>".into()));
+                }
+            }
+        }
+        if let Some(poetry) = value
+            .get_mut("tool")
+            .and_then(|v| v.get_mut("poetry"))
+            .and_then(|v| v.as_table_mut())
+        {
+            if let Some(v) = poetry.remove("dependencies") {
+                deps.push(v);
+            }
+            if let Some(groups) = poetry.get_mut("group").and_then(|v| v.as_table_mut()) {
+                for (_, group) in groups.iter_mut() {
+                    if let Some(v) = group.as_table_mut().and_then(|t| t.remove("dependencies")) {
+                        deps.push(v);
+                    }
+                }
+            }
+        }
+        Ok((deps, value))
+    }
+    let (a, ao) = split(old)?;
+    let (b, bo) = split(new)?;
+    if a != b && ao != bo {
+        return Err(AnalysisError::new(
+            "UNSUPPORTED_CHANGE",
+            "TOML delta includes non-dependency metadata",
+        ));
+    }
+    Ok(a != b)
+}
+
+fn validate_gradle_blocks(source: &str) -> Result<(), AnalysisError> {
+    let tokens = infrastructure_code(source)?;
+    let mut depth = 0usize;
+    for token in tokens {
+        if token == "{" {
+            depth += 1;
+        } else if token == "}" {
+            if depth == 0 {
+                return Err(AnalysisError::new(
+                    "UNSUPPORTED_CHANGE",
+                    "unbalanced Gradle block",
+                ));
+            }
+            depth -= 1;
+        }
+    }
+    if depth != 0 {
+        Err(AnalysisError::new(
+            "UNSUPPORTED_CHANGE",
+            "unbalanced Gradle block",
+        ))
+    } else {
+        Ok(())
+    }
 }
 fn css_visual(old: &str, new: &str) -> bool {
     fn parse(s: &str) -> Option<BTreeMap<String, BTreeMap<String, String>>> {

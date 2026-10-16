@@ -259,7 +259,7 @@ fn mixed_test_and_production_file_is_not_classified_as_tests_only() {
     );
     let findings = risk_analyzer::rules::evaluate(&[file]).unwrap();
     assert!(
-        findings.iter().any(|f| f.rule == "AUTH_CHANGE"),
+        findings.iter().any(|f| f.rule == "AUTH_CONTEXT_CHANGE"),
         "{findings:?}"
     );
 }

@@ -21,6 +21,7 @@ pub struct Git {
     executable: PathBuf,
     root: PathBuf,
     budget: Budget,
+    supervised: bool,
 }
 
 impl Git {
@@ -40,6 +41,7 @@ impl Git {
             executable,
             root: cwd.to_path_buf(),
             budget,
+            supervised: false,
         };
         let version = git.run(&["--version"], b"", 4096)?;
         let version = String::from_utf8_lossy(&version);
@@ -68,6 +70,12 @@ impl Git {
                 "repository root could not be resolved",
             ));
         }
+        Ok(git)
+    }
+
+    pub(crate) fn open_supervised(cwd: &Path, budget: Budget) -> Result<Self, AnalysisError> {
+        let mut git = Self::open(cwd, budget)?;
+        git.supervised = true;
         Ok(git)
     }
 
@@ -123,7 +131,9 @@ impl Git {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        cmd.process_group(0);
+        if !self.supervised {
+            cmd.process_group(0);
+        }
         let mut child = cmd.spawn().map_err(|_| {
             AnalysisError::new("GIT_UNAVAILABLE", "Git process could not be started")
         })?;
@@ -177,7 +187,11 @@ impl Git {
             stdin.as_raw_fd(),
         ] {
             if let Err(error) = nonblocking(fd) {
-                terminate_group(process_group);
+                if self.supervised {
+                    let _ = child.kill();
+                } else {
+                    terminate_group(process_group);
+                }
                 let _ = child.wait();
                 return Err(error);
             }
@@ -278,7 +292,11 @@ impl Git {
             }
         };
         if result.is_err() {
-            terminate_group(process_group);
+            if self.supervised {
+                let _ = child.kill();
+            } else {
+                terminate_group(process_group);
+            }
             cancelled.store(true, Ordering::Relaxed);
         }
         let _ = child.wait();
@@ -660,6 +678,7 @@ mod tests {
             executable,
             root: dir.path().to_owned(),
             budget: Budget::for_duration(Duration::from_secs(1)),
+            supervised: false,
         };
         (dir, git)
     }

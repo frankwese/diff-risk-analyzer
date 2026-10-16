@@ -238,9 +238,6 @@ impl Budget {
     pub(crate) fn deadline(&self) -> Instant {
         self.deadline
     }
-    pub(crate) fn remaining(&self) -> Duration {
-        self.deadline.saturating_duration_since(Instant::now())
-    }
     #[cfg(test)]
     pub(crate) fn for_duration(duration: Duration) -> Self {
         Self {

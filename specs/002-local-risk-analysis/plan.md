@@ -17,6 +17,9 @@ Fehlervertrag. Regeln und Klassifikation bleiben zusammen; keine eigene neue Cra
 3.2.0, serde 1.0.229/serde_json 1.0.154/serde_yaml_ng 0.10.0;
 libc 0.2.190 für Unix-Pipeflags/Prozessgruppen; Git >=2.49;
 tempfile 3.27.0 nur Entwicklungstests.
+Konvergenzkorrektur T030: quick-xml 0.38.3 und toml 0.9.8 für sichere Manifestabgrenzung,
+statt eigener unvollständiger XML-/TOML-Textparser. T031: überwachte Analyseprozessgruppe
+statt abgetrenntem Workerthread, damit Gesamttimeout tatsächliches Cleanup bewirkt.
 **Storage**: Rohblobs/Regionen im Speicher, keine persistente Anwendungsablage.
 **Testing**: tests/rules.rs, tests/git.rs, Kernverträge in tests/cli.rs; Rust-Testharness.
 **Target Platform**: Entwicklungsziel macOS arm64; Zielreleaseprüfung bei 004.

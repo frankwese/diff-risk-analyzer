@@ -1,6 +1,134 @@
 use risk_analyzer::{git::diff_lines, model::FileChange};
 
 #[test]
+fn dependency_markers_do_not_hide_xml_neighbors_or_unclosed_blocks() {
+    for (path, old, new) in [
+        (
+            "pom.xml",
+            "<project><name>old</name><dependencies><dependency><version>1</version></dependency></dependencies></project>",
+            "<project><name>new</name><dependencies><dependency><version>2</version></dependency></dependencies></project>",
+        ),
+        (
+            "pom.xml",
+            "<project><dependencies></dependencies></project>",
+            "<project><dependencies><dependency>new",
+        ),
+        (
+            "build.gradle",
+            "dependencies { implementation 'x:1' }",
+            "dependencies { implementation 'x:2'",
+        ),
+        (
+            "pyproject.toml",
+            "[project]\ndependencies=['x==1']",
+            "[project]\ndependencies=['x==2'",
+        ),
+    ] {
+        assert!(
+            risk_analyzer::rules::evaluate(&[change(path, old, new)]).is_err(),
+            "{path}"
+        );
+    }
+    let old = "<project><dependencies><dependency><version>1</version></dependency></dependencies></project>";
+    let new = old.replace(">1<", ">2<");
+    assert!(
+        risk_analyzer::rules::evaluate(&[change("pom.xml", old, &new)])
+            .unwrap()
+            .iter()
+            .any(|f| f.rule == "DEPENDENCY_UPDATE")
+    );
+}
+
+#[test]
+fn public_api_declarations_without_bodies_are_compared() {
+    for (old, new, id) in [
+        (
+            "public interface A { public int get(int x); }",
+            "public interface A { public int get(); }",
+            "CONTRACT_BREAK",
+        ),
+        (
+            "public interface A { public int get(); }",
+            "public interface A {}",
+            "CONTRACT_BREAK",
+        ),
+        (
+            "public interface A {}",
+            "public interface A { public int get(); }",
+            "API_EXTENSION",
+        ),
+    ] {
+        let findings = risk_analyzer::rules::evaluate(&[change("api/A.java", old, new)]).unwrap();
+        assert!(findings.iter().any(|f| f.rule == id), "{findings:?}");
+    }
+}
+
+#[test]
+fn iam_and_production_string_values_are_never_discarded_as_comments() {
+    for field in ["Action", "Resource", "Effect", "Principal"] {
+        let old = format!("{{\"{field}\":\"old\"}}");
+        let new = format!("{{\"{field}\":\"new\"}}");
+        let findings =
+            risk_analyzer::rules::evaluate(&[change("iam/policy.json", &old, &new)]).unwrap();
+        assert!(
+            findings.iter().any(|f| f.rule == "SECRET_IAM_PROD"),
+            "{field}: {findings:?}"
+        );
+    }
+    for (path, old, new) in [
+        (
+            "production/service.tf",
+            "resource \"service\" \"a\" { image = \"old\" }",
+            "resource \"service\" \"a\" { image = \"new\" }",
+        ),
+        ("production/service.yaml", "image: old\n", "image: new\n"),
+    ] {
+        assert!(
+            risk_analyzer::rules::evaluate(&[change(path, old, new)])
+                .unwrap()
+                .iter()
+                .any(|f| f.rule == "SECRET_IAM_PROD")
+        );
+    }
+    let findings = risk_analyzer::rules::evaluate(&[change(
+        "production/service.tf",
+        "resource \"service\" \"a\" { image = \"same\" } // old",
+        "resource \"service\" \"a\" { image = \"same\" } // new",
+    )])
+    .unwrap();
+    assert!(
+        findings
+            .iter()
+            .all(|f| f.level == risk_analyzer::model::Level::Low)
+    );
+}
+
+#[test]
+fn swapping_returns_between_functions_cannot_hide_auth_changes() {
+    let old = "class A { boolean secure() { authorize(user); return false; } boolean other() { return true; } }";
+    let new = "class A { boolean secure() { authorize(user); return true; } boolean other() { return false; } }";
+    let findings = risk_analyzer::rules::evaluate(&[change("src/A.java", old, new)]).unwrap();
+    assert!(
+        findings.iter().any(|f| f.rule == "AUTH_CONTEXT_CHANGE"),
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn auth_context_covers_new_logic_but_not_unknown_logic_in_another_function() {
+    let old = "function secure() { authorize(user); return true; } function other() { return 1; }";
+    let new = "function secure() { authorize(user); auditAccess(); return true; } function other() { return 1; }";
+    assert!(
+        risk_analyzer::rules::evaluate(&[change("src/a.js", old, new)])
+            .unwrap()
+            .iter()
+            .any(|f| f.rule == "AUTH_CONTEXT_CHANGE")
+    );
+    let new = "function secure() { authorize(user); return true; } function other() { customSideEffect(); return 1; }";
+    assert!(risk_analyzer::rules::evaluate(&[change("src/a.js", old, new)]).is_err());
+}
+
+#[test]
 fn unchanged_auth_check_is_context_for_changed_logic_not_direct_change() {
     for (path, old, new) in [
         (
@@ -118,7 +246,14 @@ fn independent_source_regions_do_not_inherit_a_neighbor_signal() {
         !findings.iter().any(|f| f.rule == "AUTH_CHANGE"),
         "unchanged call must not trigger: {findings:?}"
     );
-    for (path, old, new) in &cases[1..] {
+    let (path, old, new) = cases[1];
+    assert!(
+        risk_analyzer::rules::evaluate(&[change(path, old, new)])
+            .unwrap()
+            .iter()
+            .any(|f| f.rule == "AUTH_CONTEXT_CHANGE")
+    );
+    for (path, old, new) in &cases[2..] {
         assert!(
             risk_analyzer::rules::evaluate(&[change(path, old, new)]).is_err(),
             "unknown neighboring statement accepted"

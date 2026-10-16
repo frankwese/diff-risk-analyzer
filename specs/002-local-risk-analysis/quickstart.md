@@ -2,6 +2,9 @@
 
 Rust/Cargo 1.99.0 und C-Compiler beim Build, Git >=2.49 zur Analyse.
 Kernumfang 002 lokal abgeschlossen; aktuelle Nachweise und Grenzen in status.md.
+Konvergenzkorrekturen T027–T032 sind implementiert; aktuelle Freigabe erst nach erneuter
+Konvergenzprüfung. Regelstand 1.1.0; IAM-Werte, funktionsbezogener Kontext und globale
+Prozessdeadline mit eigenen Regressionen nachgewiesen.
 
 ```sh
 cargo test --locked --test rules --test git --test cli

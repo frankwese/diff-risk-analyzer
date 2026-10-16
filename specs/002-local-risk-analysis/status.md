@@ -4,6 +4,39 @@
 **Status**: Bestätigte Auth-Kontextkorrektur T026 umgesetzt und gezielt validiert.
 Der ursprüngliche Abschluss hatte diesen Kontext nicht ausreichend abgesichert.
 
+## Konvergenzkorrekturen T027–T032 umgesetzt
+
+- T027: JSON/YAML-Infrastruktur wird strukturell mit erhaltenen Werten verglichen;
+  Terraform-artige Texte über literal-erhaltende Kommentarabgrenzung. Geänderte IAM-
+  Action/Resource/Effect/Principal- und Produktionswerte erzeugen HIGH statt falschem LOW.
+- T028: SourceRegion besitzt die Funktion-/Klassenherkunft. Identische Returns in anderen
+  Funktionen gleichen die Änderung nicht mehr aus; getauschte Returns erhalten Auth-Kontext.
+- T029: Auth-Kontext bewertet auch neue Logik ohne anderes Signal innerhalb derselben
+  Funktion als HIGH. Die bisherige gegenteilige Regression wurde der bestätigten neuen
+  Anforderung angepasst; unbekannte Logik in anderen Funktionen bleibt unsupported.
+- T030: quick-xml 0.38.3 und toml 0.9.8 ersetzen fehleranfällige Marker für Maven/TOML;
+  XML-Metadaten außerhalb Dependencies bleiben getrennt, unvollständige XML/TOML/Gradle-
+  Blöcke werden abgelehnt. Öffentliche Java-Interface-/abstrakte Methodendeklarationen
+  ohne Körper werden für API-Erweiterung/-Bruch mit erfasst.
+- T031: Analyseprozess statt abgetrenntem Thread. Supervisor besitzt eine eigene
+  Prozessgruppe und beendet sie bei Gesamttimeout samt Git-Kindprozessen; Git im
+  Worker bleibt in derselben Gruppe. Ausgabe wird erst nach Prozessabschluss ausgegeben.
+- T032: Echter CLI-Revisionsvergleich für Auth-Return, Kommentar und fremde Funktion;
+  jedes Ergebnis zehnmal byteidentisch mit Rules 1.1.0. Hilfe-/Fehler-/Kernverträge erhalten.
+
+Finaler lokaler Lauf: cargo test --locked erfolgreich mit 21 Unit-, 12 Git-, 9 CLI-,
+30 Regel- und 20 Zuordnungskompatibilitätstests, insgesamt 92 Testfunktionen plus
+datengetriebene Fälle. Clippy erfolgreich vor dem letzten reinen Erwartungsupdate des
+Kompatibilitätstests. Format-/IDE-Abschlussprüfung nachfolgend dokumentiert.
+Keine Docker-/Vierzielreleaseprüfung, keine Commits. Alle 32 Aufgaben wurden bearbeitet;
+eine erneute unabhängige Konvergenzprüfung ist vor endgültiger Freigabe erforderlich.
+
+Abschluss dieser Runde: fmt --check, Clippy -D warnings, IDE-Build und Whitespaceprüfung
+erfolgreich. Aktueller Debug-Smoke: 6.68s real, 6.70s Wandzeit, max RSS 5.079.040 Bytes;
+interner 5s-Wunsch weiterhin nicht erreicht, kein zusätzlicher Produkt-Akzeptanzfehler.
+T027–T032 als erledigt markiert. Keine offenen Tasks in dieser Runde, aber keine neue
+Converged-Aussage ohne anschließende Konvergenzprüfung.
+
 ## Auth-Kontextkorrektur T026
 
 Regelstand 1.1.0: AUTH_CONTEXT_CHANGE als eigenständiger HIGH-Grund innerhalb der

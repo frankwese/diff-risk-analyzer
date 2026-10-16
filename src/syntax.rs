@@ -174,7 +174,7 @@ pub fn symbols(profile: Profile, source: &[u8]) -> Option<Vec<Symbol>> {
     let mut symbols = vec![];
     walk(tree.root_node(), &mut |node| {
         let kind = match node.kind() {
-            "class_declaration" | "class_definition" => "CLASS",
+            "class_declaration" | "class_definition" | "interface_declaration" => "CLASS",
             "method_declaration" | "method_definition" | "constructor_declaration" => "METHOD",
             "function_definition" | "function_declaration" => "FUNCTION",
             _ => return,
@@ -186,7 +186,10 @@ pub fn symbols(profile: Profile, source: &[u8]) -> Option<Vec<Symbol>> {
         let mut container = String::new();
         let mut nested = false;
         while let Some(p) = parent {
-            if matches!(p.kind(), "class_declaration" | "class_definition") {
+            if matches!(
+                p.kind(),
+                "class_declaration" | "class_definition" | "interface_declaration"
+            ) {
                 if !container.is_empty() {
                     nested = true;
                 }
@@ -212,10 +215,16 @@ pub fn symbols(profile: Profile, source: &[u8]) -> Option<Vec<Symbol>> {
             return;
         }
         let body = node.child_by_field_name("body");
-        if body.is_none() {
+        if body.is_none()
+            && !matches!(
+                node.kind(),
+                "method_declaration" | "method_signature" | "function_signature"
+            )
+        {
             return;
         }
-        let header = &source[node.start_byte()..body.unwrap().start_byte()];
+        let header =
+            &source[node.start_byte()..body.map(|b| b.start_byte()).unwrap_or(node.end_byte())];
         let signature: String = String::from_utf8_lossy(header)
             .split_whitespace()
             .collect::<Vec<_>>()

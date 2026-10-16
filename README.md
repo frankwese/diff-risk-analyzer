@@ -1,7 +1,7 @@
 # Git Diff Risk Analyzer
 
 Native Rust CLI for local deterministic Git diff risk analysis. No LLM or network API.
-Specification: [spec.md](specs/001-diff-risk-analysis/spec.md).
+Specifications: [Spec-Kit feature overview](specs/README.md).
 
 ```sh
 ./target/release/risk-analyzer HEAD~1..HEAD
@@ -16,7 +16,7 @@ Only committed endpoints are compared, never uncommitted/staged changes.
 The 14 signal categories include documentation, exact renames, tests, visual styling,
 business logic, API extensions, dependencies, queries, concurrency/cache, authorization,
 destructive migrations, payments, secret/IAM/production infrastructure and contract breaks.
-The finite patterns and examples are in [rules.md](specs/001-diff-risk-analysis/contracts/rules.md).
+The finite patterns and examples are in [rules.md](specs/002-local-risk-analysis/contracts/rules.md).
 Unknown changes fail rather than producing an optimistic LOW classification.
 
 Java/JavaScript/TypeScript/Python syntax is parsed without executing repository code.
@@ -60,4 +60,7 @@ Each target needs its own native/musl build environment and runtime validation.
 
 Copy the matching release executable to a directory on PATH and run
 `risk-analyzer --version`. Parser libraries are embedded. See the actual completed and
-pending checks in [validation.md](specs/001-diff-risk-analysis/validation.md).
+pending checks in the feature status reports:
+[core](specs/002-local-risk-analysis/status.md),
+[test association](specs/003-test-association/status.md),
+[distribution](specs/004-standalone-distribution/status.md).

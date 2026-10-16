@@ -1,5 +1,8 @@
 # Implementation Plan: Git Diff Risk Analyzer MVP
 
+**Historie — abgelöst**: Aktive getrennte Pläne/Aufgaben siehe
+[feature-split.md](../feature-split.md). Nicht mehr als Implementierungsplan ausführen.
+
 **Branch**: `main` | **Date**: 2026-10-13 | **Spec**: [spec.md](spec.md)
 
 **Input**: Feature specification from `specs/001-diff-risk-analysis/spec.md`

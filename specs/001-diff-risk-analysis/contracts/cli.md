@@ -1,5 +1,10 @@
 # CLI Contract v1.0.0
 
+**Historischer Gesamtvertrag**: Aktive Besitzer sind
+[002 Kern-CLI](../../002-local-risk-analysis/contracts/cli.md),
+[003 Tests-Erweiterung](../../003-test-association/contracts/cli-extension.md) und
+[004 Auslieferung](../../004-standalone-distribution/contracts/release.md).
+
 ## Invocation
 
 Auslieferung als native Datei `risk-analyzer` je macOS/Linux und x86_64/arm64.

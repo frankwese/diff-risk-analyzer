@@ -1,5 +1,10 @@
 # Implementierungsstand — Tagesabschluss 2026-10-13
 
+**Historischer Tagesabschluss**: Nachfolgende Dokumentenmigration hat den Umfang in
+002/003/004 geteilt. Aktuelle Feature-Auswahl und Restarbeit siehe
+[feature-split.md](../feature-split.md). Nachweise dieses Tages bleiben unverändert gültig
+für ihren jeweils dokumentierten Quellstand.
+
 **Status**: Für heute auf Nutzerwunsch pausiert; Implementierung teilweise abgeschlossen.
 **Feature**: [spec.md](spec.md)
 **Aufgaben**: [tasks.md](tasks.md)

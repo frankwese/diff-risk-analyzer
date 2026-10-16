@@ -4,6 +4,9 @@ description: "Ausführbare Aufgaben für die native Rust-CLI Git Diff Risk Analy
 
 # Tasks: Git Diff Risk Analyzer MVP
 
+**Status**: Abgelöste historische Aufgabenliste. Keine weitere Ausführung hier.
+Aktive Aufgaben und ID-Zuordnung: [feature-split.md](../feature-split.md).
+
 **Input**: Design documents from `specs/001-diff-risk-analysis/`
 
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md und contracts/.

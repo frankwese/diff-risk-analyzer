@@ -4,7 +4,11 @@
 
 **Created**: 2026-10-13
 
-**Status**: Ready for planning
+**Status**: Superseded — aufgeteilt in aktive Features 002, 003 und 004
+
+**Migration**: [Zuordnung und aktive Features](../feature-split.md).
+Diese Gesamt-Spec bleibt historische Quelle; Weiterarbeit ausschließlich in den neuen
+Feature-Artefakten. Der ursprüngliche Produktumfang wird vollständig übernommen.
 
 **Input**: Lokales Kommandozeilenwerkzeug für Softwareentwickler vor dem Push oder im
 Code-Review. Ein Git-Diff wird anhand deterministischer Heuristiken als LOW, MEDIUM oder

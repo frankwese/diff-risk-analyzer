@@ -1,6 +1,40 @@
 use std::process::Command;
 
 #[test]
+fn git_process_failures_reach_cli_without_partial_output_or_secrets() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let git = dir.path().join("git");
+    for failure in [
+        "printf sensitive-value >&2; exit 7",
+        "exec /usr/bin/yes sensitive-value",
+    ] {
+        let script = format!(
+            "#!/bin/sh\ncase \"$*\" in\n*--version*) printf 'git version 2.54.0\\n';;\n*--show-toplevel*) printf '%s\\n' \"$PWD\";;\n*--verify*) printf '{}\\n';;\n*) {failure};;\nesac\n",
+            "a".repeat(40)
+        );
+        std::fs::write(&git, script).unwrap();
+        std::fs::set_permissions(&git, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_risk-analyzer"))
+            .env("PATH", dir.path())
+            .current_dir(dir.path())
+            .arg("HEAD~1..HEAD")
+            .output()
+            .unwrap();
+        assert!(output.stdout.is_empty());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!stderr.contains("sensitive-value"));
+        if failure.contains("yes") {
+            assert_eq!(output.status.code(), Some(1));
+            assert!(stderr.contains("LIMIT_EXCEEDED"));
+        } else {
+            assert_eq!(output.status.code(), Some(1));
+            assert!(stderr.contains("GIT_FAILED"));
+        }
+    }
+}
+
+#[test]
 fn help_version_and_invalid_ranges_have_contract_exit_codes() {
     for arg in ["--help", "--version"] {
         let out = Command::new(env!("CARGO_BIN_EXE_risk-analyzer"))

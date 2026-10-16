@@ -246,3 +246,122 @@ fn file_and_changed_line_limits_fail_without_truncation() {
         "LIMIT_EXCEEDED"
     );
 }
+
+#[test]
+fn malformed_raw_records_are_rejected_without_partial_results() {
+    let old = "a".repeat(40);
+    let new = "b".repeat(40);
+    let header = format!(":100644 100644 {old} {new} M\0");
+    let valid = format!("{header}src/A.java\0");
+    let cases = [
+        format!("{header}src/A.java"),
+        format!("{valid}\0ignored\0"),
+        format!("{header}../outside.java\0"),
+        format!("{header}src/./A.java\0"),
+        format!("{header}src//A.java\0"),
+        format!(":100644 100644 {old} {new} R100\0src/A.java\0\0"),
+        format!(":invalid 100644 {old} {new} M\0src/A.java\0"),
+        format!(":100644 100644 {old} {} M\0src/A.java\0", "b".repeat(64)),
+        format!(":100644 100644 {old} {new} R100\0src/A.java\0src/B.java\0"),
+        format!(":100644 100644 {old} {new} A\0src/A.java\0"),
+    ];
+    for raw in cases {
+        assert!(
+            risk_analyzer::git::parse_raw(raw.as_bytes()).is_err(),
+            "accepted malformed record: {raw:?}"
+        );
+    }
+    assert!(risk_analyzer::git::parse_raw(b"").unwrap().is_empty());
+    let sha256 = format!(
+        ":100644 100644 {} {} M\0src/A.java\0",
+        "a".repeat(64),
+        "b".repeat(64)
+    );
+    assert_eq!(
+        risk_analyzer::git::parse_raw(sha256.as_bytes())
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn comparison_blob_budget_includes_base_and_target_across_files() {
+    let dir = repository();
+    let root = dir.path();
+    for i in 0..9 {
+        let mut bytes = vec![b'a'; risk_analyzer::model::MAX_BLOB];
+        bytes[0] = b'0' + i;
+        fs::write(root.join(format!("file{i}.md")), bytes).unwrap();
+    }
+    git(root, &["add", "."]);
+    git(root, &["commit", "-qm", "base"]);
+    for i in 0..9 {
+        let mut bytes = vec![b'b'; risk_analyzer::model::MAX_BLOB];
+        bytes[0] = b'0' + i;
+        fs::write(root.join(format!("file{i}.md")), bytes).unwrap();
+    }
+    git(root, &["add", "."]);
+    git(root, &["commit", "-qm", "target"]);
+    let result = Git::open(root, Budget::default())
+        .unwrap()
+        .compare("HEAD~1", "HEAD");
+    assert_eq!(result.unwrap_err().code, "LIMIT_EXCEEDED");
+    let output = Command::new(env!("CARGO_BIN_EXE_risk-analyzer"))
+        .current_dir(root)
+        .arg("HEAD~1..HEAD")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("LIMIT_EXCEEDED"));
+}
+
+#[test]
+fn comparison_line_budget_accumulates_changes_across_files() {
+    let dir = repository();
+    let root = dir.path();
+    fs::write(root.join("README.md"), "base\n").unwrap();
+    git(root, &["add", "."]);
+    git(root, &["commit", "-qm", "base"]);
+    for i in 0..2 {
+        fs::write(root.join(format!("added{i}.md")), "line\n".repeat(50_001)).unwrap();
+    }
+    git(root, &["add", "."]);
+    git(root, &["commit", "-qm", "target"]);
+    let error = Git::open(root, Budget::default())
+        .unwrap()
+        .compare("HEAD~1", "HEAD")
+        .unwrap_err();
+    assert_eq!(error.code, "LIMIT_EXCEEDED");
+}
+
+#[test]
+fn added_and_deleted_file_models_keep_missing_sides_empty() {
+    let dir = repository();
+    let root = dir.path();
+    fs::write(root.join("removed.md"), "old\n").unwrap();
+    git(root, &["add", "."]);
+    git(root, &["commit", "-qm", "base"]);
+    fs::remove_file(root.join("removed.md")).unwrap();
+    fs::write(root.join("added.md"), "new\n").unwrap();
+    git(root, &["add", "-A"]);
+    git(root, &["commit", "-qm", "target"]);
+    let git_reader = Git::open(root, Budget::default()).unwrap();
+    let comparison = git_reader.compare("HEAD~1", "HEAD").unwrap();
+    let added = comparison.files.iter().find(|f| f.status == "A").unwrap();
+    assert!(added.old_path.is_none());
+    assert!(added.old.is_empty());
+    assert_eq!(added.new, b"new\n");
+    let deleted = comparison.files.iter().find(|f| f.status == "D").unwrap();
+    assert!(deleted.new_path.is_none());
+    assert!(deleted.new.is_empty());
+    assert_eq!(deleted.old, b"old\n");
+    assert!(
+        deleted
+            .lines
+            .iter()
+            .all(|line| line.side == risk_analyzer::model::Side::Base)
+    );
+    assert_eq!(git_reader.compare("HEAD^!", "HEAD").unwrap_err().exit, 2);
+}

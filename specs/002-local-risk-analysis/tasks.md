@@ -8,6 +8,12 @@ description: "Migrierte Aufgaben für die lokale Risikobewertung"
 **Tests**: Referenz-/Regressionstests gemäß Constitution und SC-001–005.
 **Progress**: Marker aus 001 übernommen, keine neue Codeprüfung. Alt-ID pro Aufgabe.
 
+**Aktuelle Umsetzung**: T004 abgeschlossen: gemeinsame Modell-/Revisionsvalidierung
+und fehlende Dateiseiten gezielt geprüft. T005 abgeschlossen: Raw-/Blob-Framing, OID-/Pfadvalidierung,
+Git-Pfadauflösung, Fehlerklassifikation sowie nicht blockierendes Pipe-I/O und
+Prozessgruppen-Cleanup geprüft; siehe status.md. T006 ist ebenfalls abgeschlossen:
+kumulative Blob-/Zeilenzählung und gemeinsame Git-/Delta-/CLI-Deadline geprüft.
+
 ## Format and Path Conventions
 
 `- [ ] Tnnn [P?] [USn] Beschreibung mit Dateipfad`; IDs lokal zu 002.
@@ -21,9 +27,9 @@ Bestehende src/ und tests/ verwenden; keine zweite Crate. Gemeinsame Moduländer
 
 ## Phase 2: Foundational
 
-- [ ] T004 Vervollständige gemeinsame Kernmodelle in `src/model.rs`: `Option<T>`, `Vec<u8>`, `Result<T, AnalysisError>`, absoluter root/volle SHA-1/SHA-256-OIDs; „beide Endpunkte nicht leer, keine Option/Revisionliste/Dreipunktnotation“ und „keine Symlinkverfolgung/Checkout“ gemäß data-model.md nachweisen (alt T004).
-- [ ] T005 Prüfe und korrigiere Raw-NUL-/Batch-Framing, Pfadvalidierung, read-only Prozessoptionen und Cleanup in `src/git.rs`; kein Shell-/Fetch-/Hook-/Textconv-Aufruf gemäß contracts/cli.md (alt T005).
-- [ ] T006 Schließe Delta-/Budgetgrenzen in `src/git.rs` ab: „1.000 Dateien, 2 MiB je Blob, 32 MiB kumulativ, 100.000 geänderte Zeilen, 60s gesamte Analyse“; Zeitlimit nur Fehler, kein approximativer Erfolg (alt T006).
+- [X] T004 Vervollständige gemeinsame Kernmodelle in `src/model.rs`: `Option<T>`, `Vec<u8>`, `Result<T, AnalysisError>`, absoluter root/volle SHA-1/SHA-256-OIDs; „beide Endpunkte nicht leer, keine Option/Revisionliste/Dreipunktnotation“ und „keine Symlinkverfolgung/Checkout“ gemäß data-model.md nachweisen (alt T004).
+- [X] T005 Prüfe und korrigiere Raw-NUL-/Batch-Framing, Pfadvalidierung, read-only Prozessoptionen und Cleanup in `src/git.rs`; kein Shell-/Fetch-/Hook-/Textconv-Aufruf gemäß contracts/cli.md (alt T005).
+- [X] T006 Schließe Delta-/Budgetgrenzen in `src/git.rs` ab: „1.000 Dateien, 2 MiB je Blob, 32 MiB kumulativ, 100.000 geänderte Zeilen, 60s gesamte Analyse“; Zeitlimit nur Fehler, kein approximativer Erfolg (alt T006).
 - [ ] T007 Vervollständige Neutralitäts-/Kontextabgrenzung in `src/syntax.rs`: ERROR/MISSING sperren positive Neutralität, Python-Einrückung/Docstrings und JS-Zeilengrenzen erhalten; Testnutzung selbst besitzt 003 (alt T007).
 - [X] T008 Übernimm Aufrufparser/help/version und stdout/stderr-/Exitbasis in `src/cli.rs`, `src/main.rs` (alt T008).
 - [ ] T009 Belege vollständige Basisfehler-/Raw-/Budget-/Dirty-Worktree-Matrix in `tests/git.rs`, `tests/cli.rs`, `src/syntax.rs`; vorhandene Tests gezielt um fehlende Vertragsfälle ergänzen (alt T009).
@@ -70,4 +76,4 @@ US1-Kernnutzen vor vollständiger Testzuordnung abnehmen; alle Kernfehler bleibe
 
 MVP zuerst 002 abschließen. 003 kann danach eigene Funktionsmatrix abschließen;
 004 baut aktuelles Release am Funktionsmeilenstein. Keine Tests/Docker bei Dokumentenmigration.
-25 Aufgaben, 7 historisch erledigt; offene Aufgaben teilweise implementiert.
+25 Aufgaben, 7 historisch erledigt und T004/T005/T006 neu abgeschlossen; offene Aufgaben teilweise implementiert.

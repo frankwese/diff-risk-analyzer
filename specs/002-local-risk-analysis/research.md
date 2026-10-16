@@ -11,3 +11,14 @@ Syntax zur Neutralität/Testklassifikation wird gemeinsam genutzt; Nutzungsbindu
 
 Keine neuen technischen Unbekannten; bestehende Risiken sind konkrete offene Aufgaben,
 keine erneute Technologieentscheidung. Alte Prüfnachweise sind keine neuen Testläufe.
+
+## T005: Begrenztes Prozesscleanup
+
+**Decision**: Child-Prozessgruppe, nicht blockierende Unix-Pipes und explizite
+Abbruchsignale für I/O-Threads, libc 0.2.190 als direkte Dependency.
+**Rationale**: Blockierende joins konnten nach Elternexit bei vererbten Pipes hängen;
+stdin-Schreibfehler wurden erst nach Prozessende sichtbar. Deadline muss alle I/O-
+Phasen begrenzen, erfolgreiche Ausgabe dagegen vollständig lesen.
+**Alternatives considered**: Nur Child.kill beendet keine geerbten Pipehalter;
+abgetrennte Threads lassen Ressourcen offen. Eigenes Prozessframework nicht erforderlich.
+Prüfungen und T005-Abschluss siehe status.md; libc war bereits im vorhandenen Lockfile.

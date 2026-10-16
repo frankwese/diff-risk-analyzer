@@ -15,7 +15,8 @@ Fehlervertrag. Regeln und Klassifikation bleiben zusammen; keine eigene neue Cra
 **Primary Dependencies**: Bestehende Pins aus Cargo.toml: tree-sitter 0.27.1 mit Java
 0.23.5/JS 0.25.0/TS 0.23.2/Python 0.25.0 für Neutralitäts-/Kontextabgrenzung; similar
 3.2.0, serde 1.0.229/serde_json 1.0.154/serde_yaml_ng 0.10.0;
-Git >=2.49; tempfile 3.27.0 nur Entwicklungstests.
+libc 0.2.190 für Unix-Pipeflags/Prozessgruppen; Git >=2.49;
+tempfile 3.27.0 nur Entwicklungstests.
 **Storage**: Rohblobs/Regionen im Speicher, keine persistente Anwendungsablage.
 **Testing**: tests/rules.rs, tests/git.rs, Kernverträge in tests/cli.rs; Rust-Testharness.
 **Target Platform**: Entwicklungsziel macOS arm64; Zielreleaseprüfung bei 004.

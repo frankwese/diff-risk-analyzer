@@ -17,13 +17,15 @@ pub fn run(args: impl Iterator<Item = OsString>) -> i32 {
             error.exit
         }
         Ok((base, target)) => {
+            let budget = crate::model::Budget::default();
+            let worker_budget = budget.clone();
             let (sender, receiver) = std::sync::mpsc::sync_channel(1);
             std::thread::spawn(move || {
                 let result = std::env::current_dir()
                     .map_err(|_| {
                         crate::model::AnalysisError::input("working directory unavailable")
                     })
-                    .and_then(|cwd| crate::git::Git::open(&cwd, crate::model::Budget::default()))
+                    .and_then(|cwd| crate::git::Git::open(&cwd, worker_budget.clone()))
                     .and_then(|git| git.compare(&base, &target))
                     .and_then(|comparison| {
                         crate::rules::evaluate(&comparison.files).map(|findings| {
@@ -32,11 +34,15 @@ pub fn run(args: impl Iterator<Item = OsString>) -> i32 {
                                 &crate::association::evaluate(&comparison.files),
                             )
                         })
+                    })
+                    .and_then(|output| {
+                        worker_budget.check()?;
+                        Ok(output)
                     });
                 let _ = sender.send(result);
             });
             let result = receiver
-                .recv_timeout(std::time::Duration::from_secs(60))
+                .recv_timeout(budget.remaining())
                 .unwrap_or_else(|_| {
                     Err(crate::model::AnalysisError::new(
                         "LIMIT_EXCEEDED",
@@ -120,17 +126,7 @@ pub fn parse_range(args: &[OsString]) -> Result<(String, String), crate::model::
     }
     let (base, target) = text.split_once("..").ok_or_else(error)?;
     for endpoint in [base, target] {
-        if endpoint.is_empty()
-            || endpoint.starts_with('-')
-            || endpoint.starts_with('^')
-            || endpoint
-                .chars()
-                .any(|c| c.is_whitespace() || c.is_control())
-            || endpoint.contains(':')
-            || endpoint.contains('@') && endpoint.contains("{/")
-        {
-            return Err(error());
-        }
+        crate::model::validate_revision_endpoint(endpoint)?;
     }
     Ok((base.into(), target.into()))
 }

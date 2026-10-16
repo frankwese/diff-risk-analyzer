@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub const RULES_VERSION: &str = "1.0.0";
+pub const RULES_VERSION: &str = "1.1.0";
 pub const MAX_BLOB: usize = 2 * 1024 * 1024;
 pub const MAX_TOTAL: usize = 32 * 1024 * 1024;
 pub const MAX_FILES: usize = 1000;

@@ -7,7 +7,11 @@ pub fn run(args: impl Iterator<Item = OsString>) -> i32 {
         return 0;
     }
     if args == [OsString::from("--version")] {
-        println!("risk-analyzer {} (rules 1.0.0)", env!("CARGO_PKG_VERSION"));
+        println!(
+            "risk-analyzer {} (rules {})",
+            env!("CARGO_PKG_VERSION"),
+            crate::model::RULES_VERSION
+        );
         return 0;
     }
     let result = parse_range(&args);

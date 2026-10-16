@@ -897,9 +897,28 @@ fn evaluate_source(file: &FileChange, profile: Profile) -> Result<Vec<Finding>, 
                     covered = true;
                 }
             };
+            let auth_context = enclosing.is_some_and(|symbol| {
+                let counterpart = opposite_symbols.iter().find(|s| {
+                    s.name == symbol.name
+                        && s.container == symbol.container
+                        && s.kind == symbol.kind
+                });
+                auth || auth_function(profile, source, symbol)
+                    || counterpart.is_some_and(|s| {
+                        auth_function(
+                            profile,
+                            if side == Side::Base {
+                                &file.new
+                            } else {
+                                &file.old
+                            },
+                            s,
+                        )
+                    })
+            });
             add(
                 auth || has_word(
-                    code,
+                    &region.code,
                     &[
                         "authenticate",
                         "authorize",
@@ -1032,6 +1051,11 @@ fn evaluate_source(file: &FileChange, profile: Profile) -> Result<Vec<Finding>, 
             if !covered {
                 return Err(AnalysisError::unsupported(file.path()));
             }
+            if auth_context {
+                findings.push(finding(file,"AUTH_CONTEXT_CHANGE",Level::High,
+                    "Executable logic or contract changed in an auth function; authorization context indicates security impact",
+                    side,Some(region.line)));
+            }
         }
         // Reject changed executable tokens not owned by any supported region or test scope.
         let tests = crate::association::test_ranges(profile, source);
@@ -1072,6 +1096,67 @@ fn evaluate_source(file: &FileChange, profile: Profile) -> Result<Vec<Finding>, 
         ));
     }
     Ok(findings)
+}
+
+fn auth_function(profile: Profile, source: &[u8], symbol: &syntax::Symbol) -> bool {
+    const NAMES: &[&str] = &[
+        "authenticate",
+        "authorize",
+        "checkPermission",
+        "hasRole",
+        "verifyToken",
+    ];
+    if NAMES.contains(&symbol.name.as_str()) {
+        return true;
+    }
+    let Ok(tree) = profile.parse(source) else {
+        return false;
+    };
+    let mut found = false;
+    syntax::walk(tree.root_node(), &mut |node| {
+        if node.start_byte() < symbol.start || node.end_byte() > symbol.end {
+            return;
+        }
+        if !matches!(
+            node.kind(),
+            "method_invocation" | "call_expression" | "call"
+        ) {
+            return;
+        }
+        let mut parent = node.parent();
+        while let Some(p) = parent {
+            if p.start_byte() == symbol.start && p.end_byte() == symbol.end {
+                break;
+            }
+            if matches!(
+                p.kind(),
+                "method_declaration"
+                    | "method_definition"
+                    | "function_definition"
+                    | "function_declaration"
+                    | "arrow_function"
+                    | "function_expression"
+                    | "lambda"
+            ) {
+                return;
+            }
+            parent = p.parent();
+        }
+        let name = if profile == Profile::Java {
+            node.child_by_field_name("name")
+        } else {
+            node.child_by_field_name("function").map(|function| {
+                function
+                    .child_by_field_name("property")
+                    .or_else(|| function.child_by_field_name("attribute"))
+                    .unwrap_or(function)
+            })
+        };
+        if name.is_some_and(|n| NAMES.contains(&syntax::text(n, source))) {
+            found = true;
+        }
+    });
+    found
 }
 
 fn statement_regions(profile: Profile, source: &[u8]) -> Vec<(usize, usize, String)> {

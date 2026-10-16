@@ -1,9 +1,22 @@
-# Risk Rules Contract v1.0.0
+# Risk Rules Contract v1.1.0
 
 **Owner**: Feature 002. Übernommen aus Gesamt-Spec 001 ohne Änderung der Regeln.
 Die Implementierung verwendet Syntaxbereiche für Quellanweisungen/-deklarationen,
 damit unveränderte Nachbaraufrufe nicht durch Zeilendiffs zu neuen Befunden werden.
 Testklassifikation bleibt Kernaufgabe; symbolbezogene Testnutzung besitzt Feature 003.
+
+## Auth-Kontextkorrektur (bestätigte Produktergänzung)
+
+AUTH_CONTEXT_CHANGE ist ein zusätzliches HIGH-Indiz innerhalb der bestehenden
+AuthN/AuthZ-Kategorie (weiterhin 14 fachliche Kategorien). Geänderte nicht neutrale
+Logik oder Deklaration einer Funktion gilt als Auth-Kontextänderung, wenn ihre Herkunft
+ein Auth-Pfad, ein exakter Auth-Name (authenticate, authorize, checkPermission, hasRole,
+verifyToken) oder ein tatsächlicher Aufruf einer solchen Prüfoperation im selben
+Funktionsbereich im Basis-/Zielstand ist. Kommentare, Literaltexte und Aufrufe in anderen
+oder verschachtelten Funktionen begründen keinen Kontext. Reine Format-/Kommentaränderung
+erzeugt keinen Kontextbefund. Der Grund nennt ausdrücklich den Auth-Kontext und die
+geänderte Fundstelle, nicht einen vermeintlich geänderten Prüfaufruf. Direkte Treffer
+bleiben AUTH_CHANGE. Kein bewiesener Datenfluss-/Sicherheitszusammenhang wird behauptet.
 
 ## Evaluation and coverage
 

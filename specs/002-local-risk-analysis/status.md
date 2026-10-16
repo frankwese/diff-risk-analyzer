@@ -1,7 +1,24 @@
 # Status: Lokale Risikobewertung
 
 **Stand**: Dokumentenmigration am 2026-10-13, Basiscommit eb5de1e.
-**Status**: Kernumfang 002 implementiert und lokal validiert; alle 25 Aufgaben abgeschlossen.
+**Status**: Bestätigte Auth-Kontextkorrektur T026 umgesetzt und gezielt validiert.
+Der ursprüngliche Abschluss hatte diesen Kontext nicht ausreichend abgesichert.
+
+## Auth-Kontextkorrektur T026
+
+Regelstand 1.1.0: AUTH_CONTEXT_CHANGE als eigenständiger HIGH-Grund innerhalb der
+Auth-Kategorie. Auth-Pfad, exakter Auth-Funktionsname oder tatsächlicher Auth-Aufruf
+im selben Basis-/Zielsymbol begründet den Kontext für geänderte Logik/Verträge.
+Unveränderte Prüfaufrufe sind keine direkt geänderten AUTH_CHANGE-Befunde.
+Kommentare/Literale, andere Funktionen und verschachtelte Funktionen übertragen
+keinen Kontext. Unbekannte Nachbaranweisungen bleiben weiterhin unsupported;
+der Kontextbefund dient nicht zum Überdecken unbewerteter Änderungen.
+
+25 Regeltests und Clippy erfolgreich; neue Fälle decken Java/JS/TS/Python-Returns,
+Auth-Namen, Vertragsänderung, entfernte Prüfung, Kommentare/Strings, andere Funktionen
+und verschachtelte Helper ab. FR-011/SC-006 damit gezielt nachgewiesen; README korrigiert.
+Kein neuer Release-/Dockerlauf oder Commit. Ältere Abschlussnachweise beziehen sich
+weiterhin auf ihren früheren Regelstand.
 
 ## Abschluss der verbleibenden Aufgaben T011–T025
 

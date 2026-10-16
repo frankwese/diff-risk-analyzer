@@ -1,6 +1,99 @@
 use risk_analyzer::{git::diff_lines, model::FileChange};
 
 #[test]
+fn unchanged_auth_check_is_context_for_changed_logic_not_direct_change() {
+    for (path, old, new) in [
+        (
+            "src/Access.java",
+            "class Access { boolean mayAccess() { authorize(user); return false; } }",
+            "class Access { boolean mayAccess() { authorize(user); return true; } }",
+        ),
+        (
+            "src/access.js",
+            "function mayAccess() { authorize(user); return false; }",
+            "function mayAccess() { authorize(user); return true; }",
+        ),
+        (
+            "src/access.ts",
+            "function mayAccess(): boolean { authorize(user); return false; }",
+            "function mayAccess(): boolean { authorize(user); return true; }",
+        ),
+        (
+            "src/access.py",
+            "def may_access():\n    authorize(user)\n    return False\n",
+            "def may_access():\n    authorize(user)\n    return True\n",
+        ),
+    ] {
+        let findings = risk_analyzer::rules::evaluate(&[change(path, old, new)]).unwrap();
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.rule == "AUTH_CONTEXT_CHANGE"
+                    && f.level == risk_analyzer::model::Level::High),
+            "{path}: {findings:?}"
+        );
+        assert!(
+            !findings.iter().any(|f| f.rule == "AUTH_CHANGE"),
+            "unmodified check incorrectly reported: {findings:?}"
+        );
+    }
+}
+
+#[test]
+fn auth_name_contract_and_removed_check_preserve_auth_context() {
+    for (old, new) in [
+        (
+            "function authorize() { return false; }",
+            "function authorize() { return true; }",
+        ),
+        (
+            "function mayAccess(user) { authorize(user); return false; }",
+            "function mayAccess(user, role) { authorize(user); return false; }",
+        ),
+        (
+            "function mayAccess() { authorize(user); return false; }",
+            "function mayAccess() { return true; }",
+        ),
+    ] {
+        let findings =
+            risk_analyzer::rules::evaluate(&[change("src/access.js", old, new)]).unwrap();
+        assert!(
+            findings.iter().any(|f| f.rule == "AUTH_CONTEXT_CHANGE"),
+            "{findings:?}"
+        );
+    }
+}
+
+#[test]
+fn auth_context_excludes_other_functions_comments_strings_and_nested_helpers() {
+    for (old, new) in [
+        (
+            "function secure() { authorize(user); return false; } function other() { return 1; }",
+            "function secure() { authorize(user); return false; } function other() { return 2; }",
+        ),
+        (
+            "function mayAccess() { const text='authorize(user)'; return 1; }",
+            "function mayAccess() { const text='authorize(user)'; return 2; }",
+        ),
+        (
+            "function mayAccess() { authorize(user); return 1; } // old",
+            "function mayAccess() { authorize(user); return 1; } // new",
+        ),
+        (
+            "function mayAccess() { const helper=()=>authorize(user); return 1; }",
+            "function mayAccess() { const helper=()=>authorize(user); return 2; }",
+        ),
+    ] {
+        let findings =
+            risk_analyzer::rules::evaluate(&[change("src/access.js", old, new)]).unwrap();
+        assert!(
+            !findings.iter().any(|f| f.rule == "AUTH_CONTEXT_CHANGE"),
+            "{findings:?}"
+        );
+    }
+}
+
+#[test]
 fn independent_source_regions_do_not_inherit_a_neighbor_signal() {
     let cases = [
         (

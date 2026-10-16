@@ -19,7 +19,10 @@ destructive migrations, payments, secret/IAM/production infrastructure and contr
 The finite patterns and examples are in [rules.md](specs/002-local-risk-analysis/contracts/rules.md).
 Unknown changes fail rather than producing an optimistic LOW classification.
 Source statements and declaration headers are compared separately: an unchanged
-authorization call next to a changed return does not become a new authorization finding.
+authorization call is not reported as directly modified. Executable changes in the
+same function containing an authorization check produce a separate HIGH
+`AUTH_CONTEXT_CHANGE` finding. Auth paths and explicit auth function names also establish
+this context; comments, literals and checks in other functions do not.
 Unknown neighboring statements are not covered by another matched rule. Conventional
 test filenames do not exempt changed production method bodies from assessment.
 OpenAPI metadata alongside a schema change and unsupported YAML aliases/tags fail explicitly.

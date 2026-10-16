@@ -109,6 +109,12 @@ ohne erfolgreiche Risikoklasse; ein leerer Vergleich bleibt erfolgreich untersch
 - **FR-010**: Tests MÜSSEN von Produktionsänderungen getrennt klassifiziert werden;
   ihre bloße Anwesenheit darf keine Risikoklasse senken. Symbolbezogene Testhinweise
   werden ausschließlich durch Feature 003 hinzugefügt und blockieren diesen Kernabschluss nicht.
+- **FR-011**: Nicht neutrale Änderungen ausführbarer Logik oder des Vertrags innerhalb
+  einer erkennbaren Auth-Funktion MÜSSEN HIGH als Auth-Kontextindiz liefern. Erkennbar
+  sind die vereinbarten Auth-Pfade, eindeutige Auth-Funktionsnamen und tatsächliche
+  Auth-Prüfaufrufe innerhalb derselben Funktion im Basis- oder Zielstand. Unveränderte
+  Prüfaufrufe DÜRFEN NICHT als direkt geändert ausgegeben werden. Reine Kommentar-/
+  Formatänderungen und Änderungen in anderen Funktionen übernehmen diesen Kontext nicht.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -128,6 +134,10 @@ ohne erfolgreiche Risikoklasse; ein leerer Vergleich bleibt erfolgreich untersch
 - **SC-004**: Jeder Referenzbefund lässt sich einer Datei und Änderung eindeutig zuordnen.
 - **SC-005**: Alle vereinbarten Fehler-/Limit-/Read-only-Fälle liefern den definierten
   Status ohne falsche Risk-Ausgabe und ohne Repositorymutation.
+- **SC-006**: Ein geänderter Return neben einer unveränderten Auth-Prüfung liefert
+  HIGH mit eigenem Kontextgrund; Kommentaränderung, bloße Literalerwähnung und Änderung
+  in einer anderen Funktion liefern kein Auth-Kontextsignal. Direkte Auth-Änderungen
+  behalten ihren direkten Befund.
 
 ## Assumptions
 

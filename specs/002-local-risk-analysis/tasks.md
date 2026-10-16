@@ -62,6 +62,10 @@ Bestehende src/ und tests/ verwenden; keine zweite Crate. Gemeinsame Moduländer
 
 ## Phase 5: Polish
 
+## Bestätigte Korrektur: Auth-Kontext
+
+- [X] T026 [US1] Ergänze funktionsbezogenen AUTH_CONTEXT_CHANGE in `src/rules.rs` und Regressionen in `tests/rules.rs`: tatsächliche Prüfaufrufe/Funktionsnamen im selben Basis-/Zielsymbol, HIGH bei Logik-/Vertragsänderung, kein Kontextübertrag aus anderen Funktionen, Kommentaren/Literalen; README und status.md berichtigen und FR-011/SC-006 nachweisen.
+
 - [X] T024 Finalisiere Kernbeispiele/-Grenzen in `README.md`, `quickstart.md` und dokumentiere Rest-/Abschlussstatus in `status.md` (Kernanteil alt T035).
 - [X] T025 Prüfe 002-FR-001–010/SC-001–005 in `status.md`; nach letzten Funktionsänderungen einmal fmt/Clippy/Kernprüfungen und repräsentativen Zeit/RSS-Nachweis ausführen, keine Vierzielprüfung als Gate (Kernanteil alt T036).
 
